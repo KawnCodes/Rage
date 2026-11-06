@@ -316,3 +316,33 @@ body.touch-on.playing.tb-side #toolbar button { width: 44px; height: 44px; paddi
 .paint-grid div { border: 1px solid rgba(255, 255, 255, 0.06); }
 #paint-area { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 #paint-area[hidden] { display: none; }
+
+/* Phones sideways: the map fills the height, so the bar becomes a column in the right-hand strip. */
+.mapbar.side {
+  left: auto;
+  right: max(6px, env(safe-area-inset-right));
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  flex-direction: column;
+  align-items: stretch;
+  padding: 6px;
+  gap: 6px;
+  max-width: none;
+}
+.mapbar.side .seg { flex-direction: column; }
+.mapbar.side button { padding: 7px 2px; font-size: 10px; letter-spacing: 0; }
+/* No room anywhere: small buttons in the top-right corner, clear of the world title and stage name box. */
+.mapbar.mini {
+  left: auto;
+  right: max(6px, env(safe-area-inset-right));
+  top: max(6px, env(safe-area-inset-top));
+  bottom: auto;
+  transform: none;
+  padding: 4px;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 27vw;
+}
+.mapbar.mini button { padding: 5px 6px; font-size: 10px; letter-spacing: 0; }

@@ -50,6 +50,23 @@ function fit() {
   // Room beside the game for the floating buttons? (phones held sideways)
   document.body.classList.toggle('tb-side', overlay && (window.innerWidth - W * scale) / 2 >= 52);
   $('#app').style.setProperty('--game-w', `${Math.floor(W * scale)}px`);
+  layoutMapbar();
+}
+
+// The level-select bar must never cover the map's stage name box:
+// - room below the map (desktop, tablets, phones upright): bar underneath, as usual
+// - no room below but a strip beside it (phones sideways): a column in the right strip
+// - neither: a compact bar tucked into the bottom-right corner
+function layoutMapbar() {
+  const bar = document.querySelector('#menu-levels');
+  if (!bar) return;
+  const r = canvas.getBoundingClientRect();
+  const below = window.innerHeight - r.bottom;
+  const side = window.innerWidth - r.right;
+  const roomBelow = below >= 64;
+  bar.classList.toggle('side', !roomBelow && side >= 76);
+  bar.classList.toggle('mini', !roomBelow && side < 76);
+  bar.style.width = !roomBelow && side >= 76 ? `${Math.floor(side - 12)}px` : '';
 }
 window.addEventListener('resize', fit);
 window.addEventListener('orientationchange', () => setTimeout(fit, 150));
@@ -468,6 +485,7 @@ function refreshPause() {
 
 // ---------- overworld map (level select) ----------
 function openMap() {
+  requestAnimationFrame(layoutMapbar);
   if (!Save.multiplayerUnlocked(save)) lvMode = 'solo';
   const hint = world ? world.levelIndex : save.run ? save.run.level : save.unlocked;
   map.open(save, lvMode, hint);
