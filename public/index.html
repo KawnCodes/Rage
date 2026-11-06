@@ -68,6 +68,23 @@
         <button data-go="reset-progress" class="danger" title="Reset this profile's progress">Reset</button>
       </section>
 
+      <section id="menu-room" class="panel" hidden>
+        <h2>Room</h2>
+        <p id="room-who" class="room-who"></p>
+        <p id="room-progress" class="note"></p>
+        <button data-go="share-progress" id="btn-share">📤 Share my progress</button>
+        <p class="note">Sends your own progress to your partner. They can add it to your team with one tap.</p>
+        <h3 class="sub">Received progress</h3>
+        <div id="room-inbox" class="plist"></div>
+        <label id="room-world-label">Start in
+          <select id="room-world"></select>
+        </label>
+        <button data-go="room-start" id="btn-room-start" class="primary">Start game ▶</button>
+        <p id="room-wait" class="note"></p>
+        <p id="room-status" class="status" role="status"></p>
+        <button data-go="room-leave">Leave room</button>
+      </section>
+
       <section id="menu-profiles" class="panel" hidden>
         <h2>Profiles</h2>
         <p class="note">Your solo save is yours. A <b>team</b> profile is progress two people share: use it for local co-op, and it's picked automatically when you play online together, syncing on both devices.</p>
@@ -78,12 +95,14 @@
           <input id="in-team-b" maxlength="12" autocomplete="off" spellcheck="false" placeholder="NAME 2" aria-label="Second name">
         </div>
         <button data-go="team-create">Create team</button>
-        <h3 class="sub">Move progress to another device</h3>
-        <button data-go="code-export">Show progress code</button>
-        <textarea id="code-out" readonly rows="3" hidden aria-label="Your progress code"></textarea>
-        <button data-go="code-copy" hidden id="btn-code-copy">Copy</button>
-        <textarea id="code-in" rows="3" placeholder="Paste a progress code here" aria-label="Paste a progress code"></textarea>
-        <button data-go="code-import">Load progress code</button>
+        <h3 class="sub">Your progress code (saved on this device)</h3>
+        <p class="note">Always up to date. Share it with the 📤 button in an online room, or copy it to another device.</p>
+        <textarea id="code-out" readonly rows="3" aria-label="Your progress code"></textarea>
+        <button data-go="code-copy" id="btn-code-copy">Copy code</button>
+        <h3 class="sub">Received progress</h3>
+        <div id="profile-inbox" class="plist"></div>
+        <textarea id="code-in" rows="3" placeholder="Or paste a progress code here" aria-label="Paste a progress code"></textarea>
+        <button data-go="code-import">Load pasted code</button>
         <p id="profile-status" class="status" role="status"></p>
         <button data-go="back">Back</button>
       </section>
@@ -92,9 +111,6 @@
         <h2>Online lobby</h2>
         <label>Your name
           <input id="in-name" maxlength="12" autocomplete="off" spellcheck="false" placeholder="PLAYER">
-        </label>
-        <label id="world-pick-label">Start in
-          <select id="in-world"></select>
         </label>
         <div id="server-box">
           <button data-go="host">Host a room</button>
@@ -170,6 +186,7 @@
         <button data-go="resume">Resume</button>
         <button data-go="restart" class="offline-only">Restart stage</button>
         <button data-go="levels" class="offline-only">Level select</button>
+        <button data-go="share-progress" class="online-only">📤 Share my progress</button>
         <button data-go="mute" class="mute-btn">Sound: on</button>
         <button data-go="touch-mode" class="touch-btn">Touch controls: auto</button>
         <button data-go="quit">Home</button>

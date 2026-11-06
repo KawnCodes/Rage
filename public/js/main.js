@@ -54,7 +54,7 @@ window.addEventListener('orientationchange', () => setTimeout(fit, 150));
 fit();
 
 // ---------- menus ----------
-const panels = ['menu-main', 'menu-levels', 'menu-profiles', 'menu-online', 'menu-manual', 'menu-controls', 'menu-cheats', 'menu-pause'];
+const panels = ['menu-main', 'menu-levels', 'menu-room', 'menu-profiles', 'menu-online', 'menu-manual', 'menu-controls', 'menu-cheats', 'menu-pause'];
 const touchPad = new TouchPad($('#touch'), input);
 
 // ---------- touch controls ----------
@@ -214,7 +214,6 @@ const actions = {
   'map-play': () => mapPlay(),
   profiles: () => { renderProfiles(); show('menu-profiles'); },
   'team-create': () => createTeamFromForm(),
-  'code-export': () => showProgressCode(),
   'code-copy': () => copy('#code-out'),
   'code-import': () => importProgressCode(),
   'reset-progress': () => {
@@ -223,7 +222,10 @@ const actions = {
     openMap();
     toast('Progress reset');
   },
-  online: () => { if (requireMultiplayer()) { renderWorldPick(); show('menu-online'); checkServer(); } },
+  online: () => { if (requireMultiplayer()) { show('menu-online'); checkServer(); } },
+  'share-progress': () => shareProgress(),
+  'room-start': () => startFromRoom(),
+  'room-leave': () => { if (link) link.send({ t: 'bye' }, true); cancelOnline(); show('menu-online'); },
   controls: () => { show('menu-controls'); renderPads(); },
   mute: () => toggleMute(),
   fullscreen: () => toggleFullscreen(),
@@ -291,7 +293,10 @@ function startGame(m, opts = {}) {
   mode = m;
   paused = false;
   const names = m === 'host' ? [myName(), partnerName] : m === 'guest' ? [partnerName, myName()] : ['P1', 'P2'];
-  if (m === 'guest') opts = { ...opts, startLevel: MULTIPLAYER_START }; // the host's 'lvl' message moves us to the right stage
+  if (m === 'guest') { // the host decides; anything odd falls back to World 2
+    const lv = Number(opts.startLevel);
+    opts = { ...opts, startLevel: Number.isInteger(lv) && LEVELS[lv] && lv >= MULTIPLAYER_START ? lv : MULTIPLAYER_START };
+  }
   if (m === 'host') opts = { ...opts, startLevel: hostStartLevel() }; // online play is World 2 onwards
   world = new World({ mode: m, names, onEvent, ...opts });
   autosave();
@@ -426,6 +431,7 @@ function refreshMain() {
 function refreshPause() {
   const online = mode === 'host' || mode === 'guest';
   for (const el of document.querySelectorAll('#menu-pause .offline-only')) el.hidden = online;
+  for (const el of document.querySelectorAll('#menu-pause .online-only')) el.hidden = !online || !link;
   if (world) {
     const b = save.best[world.levelIndex];
     $('#pause-info').textContent = `${stageLabel(world.levelIndex)}: ${world.level.name}` +
@@ -525,8 +531,8 @@ function renderProfiles() {
     }
     list.append(row);
   }
-  $('#code-out').hidden = true;
-  $('#btn-code-copy').hidden = true;
+  $('#code-out').value = Save.myCode(profile);
+  renderInbox($('#profile-inbox'));
 }
 
 function createTeamFromForm() {
@@ -552,14 +558,6 @@ function ensureTeam(a, b) {
   const want = Math.max(MULTIPLAYER_START, solo.unlocked);
   if (s.unlocked < want) { s.unlocked = want; Save.store(s, id); }
   return id;
-}
-
-function showProgressCode() {
-  const names = profile === 'solo' ? null : profile.split(' & ');
-  $('#code-out').value = Save.exportCode(save, names);
-  $('#code-out').hidden = false;
-  $('#btn-code-copy').hidden = false;
-  setStatus('#profile-status', 'Copy this code and load it on the other device. It contains unlocks and best times only.');
 }
 
 function importProgressCode() {
@@ -693,6 +691,11 @@ function attachLink(l, isHost) {
   l.onClose = () => {
     const wasPlaying = !!world && (mode === 'host' || mode === 'guest');
     link = null;
+    if (!wasPlaying && currentPanel === 'menu-room') {
+      toast(`${partnerName} left the room`, 3500);
+      show('menu-online');
+      return;
+    }
     if (!wasPlaying) {
       setStatus('#online-status', 'Connection failed or closed.', true);
       setStatus('#manual-status', 'Connection failed or closed.', true);
@@ -715,20 +718,26 @@ function attachLink(l, isHost) {
 function onNet(m, isHost) {
   if (m.t === 'hello') {
     if (m.v !== PROTOCOL_VERSION) { toast('Version mismatch — both players need the same version'); cancelOnline(); return; }
-    if (world) return; // already started
+    if (world || currentPanel === 'menu-room') return; // already together
     partnerName = m.name;
+    roomIsHost = isHost;
     joinTeamWith(partnerName);
-    startGame(isHost ? 'host' : 'guest');
     sendProgress();
-    if (isHost) link.send({ t: 'lvl', lv: world.levelIndex }, true);
-    toast(`Playing with ${partnerName}`);
+    openRoom();
     return;
   }
-  if (!world) return;
   if (m.t === 'bye') { link && link.close(); return; }
+  if (m.t === 'share') { receiveShare(m.code); return; }
+  if (m.t === 'prog') { receiveProgress(m); if (currentPanel === 'menu-room') renderRoom(); return; }
+  if (!world) {
+    if (m.t === 'start' && !isHost && currentPanel === 'menu-room') {
+      startGame('guest', { startLevel: m.lv });
+      toast(`Playing with ${partnerName}`);
+    }
+    return;
+  }
   if (m.t === 'ping') { link.send({ t: 'pong', n: m.n }); return; }
   if (m.t === 'pong') return;
-  if (m.t === 'prog') { receiveProgress(m); return; }
   if (isHost) {
     // The guest may only report its own player and make claims we verify.
     if (m.t === 'p') world.applyRemote(1, m);
@@ -743,13 +752,13 @@ function onNet(m, isHost) {
 }
 
 function hostStartLevel() {
-  const v = Number($('#in-world').value);
+  const v = Number($('#room-world').value);
   const w = WORLDS.find((x) => x.start === v);
   return w && w.start >= MULTIPLAYER_START && w.start <= save.unlocked ? w.start : MULTIPLAYER_START;
 }
 
 function renderWorldPick() {
-  const sel = $('#in-world');
+  const sel = $('#room-world');
   const prev = sel.value;
   sel.replaceChildren();
   for (const [i, w] of WORLDS.entries()) {
@@ -760,7 +769,104 @@ function renderWorldPick() {
     sel.append(o);
   }
   if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
-  $('#world-pick-label').hidden = sel.options.length < 2;
+  $('#room-world-label').hidden = sel.options.length < 2;
+}
+
+// ---------- the room (after connecting, before the game) ----------
+let roomIsHost = false;
+let lastShare = -Infinity;
+
+function openRoom() {
+  setStatus('#room-status', '');
+  renderRoom();
+  show('menu-room');
+}
+
+function renderRoom() {
+  $('#room-who').textContent = `${myName()} + ${partnerName} · connected`;
+  const u = save.unlocked;
+  $('#room-progress').textContent = `${profileName()}: up to World ${LEVELS[u].world + 1} (${shortLabel(u)})`;
+  renderWorldPick();
+  $('#room-world-label').hidden = !roomIsHost || $('#room-world').options.length < 2;
+  $('#btn-room-start').hidden = !roomIsHost;
+  $('#room-wait').textContent = roomIsHost ? '' : `Waiting for ${partnerName} to start the game…`;
+  renderInbox($('#room-inbox'), partnerName);
+}
+
+function startFromRoom() {
+  if (!link || !link.open || !roomIsHost) return;
+  startGame('host');
+  link.send({ t: 'start', lv: world.levelIndex }, true);
+  link.send({ t: 'lvl', lv: world.levelIndex }, true);
+  toast(`Playing with ${partnerName}`);
+}
+
+// One press: send your own progress code to your partner.
+function shareProgress() {
+  if (!link || !link.open) { toast('Share works when you are connected to someone', 2500); return; }
+  const now = performance.now();
+  if (now - lastShare < 2000) return;
+  lastShare = now;
+  link.send({ t: 'share', code: Save.myCode('solo') }, true);
+  sfx('select');
+  const d = Save.describeCode(Save.myCode('solo'));
+  const msg = `Sent your progress (World ${d.world + 1}, ${shortLabel(d.unlocked)}) to ${partnerName}`;
+  setStatus('#room-status', msg);
+  toast(msg, 2500);
+}
+
+function receiveShare(code) {
+  const entry = Save.addToInbox(partnerName, code);
+  if (!entry) return;
+  const d = Save.describeCode(code);
+  sfx('huzzar');
+  toast(`${partnerName} shared progress: World ${d.world + 1}. It's in Received progress.`, 4000);
+  if (currentPanel === 'menu-room') renderRoom();
+  if (currentPanel === 'menu-profiles') renderProfiles();
+}
+
+// List of received codes with "add" and "delete" buttons. Kept on this device.
+function renderInbox(container, onlyFrom) {
+  container.replaceChildren();
+  const list = Save.inbox().filter((e) => !onlyFrom || e.from === sanitizeName(onlyFrom));
+  if (!list.length) {
+    const p = document.createElement('p');
+    p.className = 'inbox-empty';
+    p.textContent = onlyFrom ? `Nothing from ${onlyFrom} yet.` : 'Nothing received yet.';
+    container.append(p);
+    return;
+  }
+  for (const e of list) {
+    const d = Save.describeCode(e.code);
+    const row = document.createElement('div');
+    row.className = 'inbox-row';
+    const what = document.createElement('span');
+    what.className = 'what';
+    const when = new Date(e.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    what.textContent = `From ${e.from} · up to World ${d.world + 1} (${shortLabel(d.unlocked)}) · ${d.cleared} stages cleared · ${when}`;
+    const add = document.createElement('button');
+    add.textContent = `Add to ${profile === 'solo' ? 'my solo' : 'team'}`;
+    add.addEventListener('click', () => {
+      const got = Save.importCode(e.code);
+      if (!got) return;
+      const run = save.run;
+      save = Save.merge(save, got.save);
+      save.run = run;
+      map.save = save;
+      Save.store(save, profile);
+      if (link && profile !== 'solo') sendProgress(); // keep the team in sync on both devices
+      sfx('huzzar');
+      toast(`Added to ${profileName()}: now up to World ${LEVELS[save.unlocked].world + 1}`, 3000);
+      if (currentPanel === 'menu-room') renderRoom(); else renderProfiles();
+    });
+    const del = document.createElement('button');
+    del.className = 'danger';
+    del.textContent = '✕';
+    del.title = 'Remove';
+    del.addEventListener('click', () => { Save.removeFromInbox(e.id); renderInbox(container, onlyFrom); });
+    row.append(what, add, del);
+    container.append(row);
+  }
 }
 
 // ---------- online: lobby server ----------

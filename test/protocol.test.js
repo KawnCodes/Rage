@@ -65,3 +65,13 @@ test('rate limiter', () => {
   assert.equal(ok, 5);
   assert.equal(r.allow(1200), true); // 2 tokens refilled
 });
+
+test('share and start messages are validated', () => {
+  const code = 'RAGESAVE1-' + Buffer.from('{"u":3}').toString('base64');
+  assert.deepEqual(decode(JSON.stringify({ t: 'share', code })), { t: 'share', code });
+  assert.equal(decode(JSON.stringify({ t: 'share', code: '<img src=x>' })), null);
+  assert.equal(decode(JSON.stringify({ t: 'share', code: 'RAGESAVE1-' + 'A'.repeat(7000) })), null);
+  assert.equal(decode(JSON.stringify({ t: 'share', code: 42 })), null);
+  assert.deepEqual(decode(JSON.stringify({ t: 'start', lv: 11 })), { t: 'start', lv: 11 });
+  assert.equal(decode(JSON.stringify({ t: 'start', lv: 'x' })), null);
+});

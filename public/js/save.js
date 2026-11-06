@@ -145,8 +145,11 @@ export function store(save, profile = activeProfile()) {
     const t = readTeams();
     if (!t.teams[profile]) return false;
     t.teams[profile].save = save;
-    return writeTeams(t);
+    const ok = writeTeams(t);
+    refreshMyCode(save, profile);
+    return ok;
   }
+  refreshMyCode(save, profile);
   try { localStorage.setItem(KEY, JSON.stringify(save)); return true; } catch { return false; }
 }
 
@@ -182,6 +185,67 @@ export function toWire(save) {
 }
 export function fromWire(m) {
   return clean({ unlocked: m.u, wins: m.w, best: (m.b || []).map((b) => (b ? { deaths: b[0], time: b[1] } : null)) });
+}
+
+// ---------- codes kept on this device ----------
+// Your own code per profile is refreshed every time progress is saved, so it's
+// always ready to share. Codes other people send you go in an inbox to load now or later.
+const MYCODES_KEY = 'rage-mycodes-v1';
+const INBOX_KEY = 'rage-inbox-v1';
+const INBOX_MAX = 10;
+
+function readJson(key, fallback) {
+  try {
+    const txt = localStorage.getItem(key);
+    if (!txt || txt.length > 100000) return fallback;
+    const v = JSON.parse(txt);
+    return v && typeof v === 'object' ? v : fallback;
+  } catch { return fallback; }
+}
+function writeJson(key, v) {
+  try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage full or blocked */ }
+}
+
+export function myCode(profile = activeProfile()) {
+  const codes = readJson(MYCODES_KEY, {});
+  const c = codes[profile];
+  if (typeof c === 'string' && importCode(c)) return c;
+  return exportCode(load(profile), profile === 'solo' ? null : profile.split(' & '));
+}
+
+function refreshMyCode(save, profile) {
+  const codes = readJson(MYCODES_KEY, {});
+  codes[profile] = exportCode(save, profile === 'solo' ? null : profile.split(' & '));
+  writeJson(MYCODES_KEY, codes);
+}
+
+// What a code unlocks, for showing in lists: e.g. "World 4, 4-2"
+export function describeCode(code) {
+  const got = importCode(code);
+  if (!got) return null;
+  const u = got.save.unlocked;
+  return { names: got.names, unlocked: u, world: LEVELS[u].world, cleared: got.save.best.filter(Boolean).length };
+}
+
+export function inbox() {
+  const list = readJson(INBOX_KEY, []);
+  return Array.isArray(list)
+    ? list.filter((e) => e && typeof e.code === 'string' && importCode(e.code)).slice(0, INBOX_MAX)
+      .map((e) => ({ id: String(e.id).slice(0, 20), from: sanitizeName(e.from), code: e.code, at: Number(e.at) || 0 }))
+    : [];
+}
+
+export function addToInbox(from, code) {
+  if (!importCode(code)) return null;
+  const list = inbox().filter((e) => !(e.from === sanitizeName(from) && e.code === code));
+  const entry = { id: Math.random().toString(36).slice(2, 10), from: sanitizeName(from), code, at: Date.now() };
+  list.unshift(entry);
+  writeJson(INBOX_KEY, list.slice(0, INBOX_MAX));
+  return entry;
+}
+
+export function removeFromInbox(id) {
+  writeJson(INBOX_KEY, inbox().filter((e) => e.id !== id));
 }
 
 // A copy/paste "progress code" to move a profile between devices.

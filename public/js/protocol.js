@@ -7,7 +7,7 @@
 // with numbers clamped to sane ranges. Unknown fields are dropped. Nothing
 // received is ever passed to innerHTML / eval / URLs.
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const MAX_MESSAGE_BYTES = 8192;
 export const MAX_SDP_LENGTH = 16000;
 export const MAX_SIGNAL_BYTES = 20000;
@@ -114,6 +114,14 @@ export function decode(raw) {
     case 'pong': {
       const n = int(m.n, 0, 1e9);
       return n === null ? null : { t: m.t, n };
+    }
+    case 'share': { // a progress code sent with the Share button
+      if (typeof m.code !== 'string' || m.code.length > 6000 || !/^RAGESAVE1-[A-Za-z0-9+/=]+$/.test(m.code)) return null;
+      return { t: 'share', code: m.code };
+    }
+    case 'start': { // host starts the game from the room
+      const lv = int(m.lv, 0, 99);
+      return lv === null ? null : { t: 'start', lv };
     }
     case 'prog': { // shared team progress
       const u = int(m.u, 0, 999), w = int(m.w, 0, 1e6);

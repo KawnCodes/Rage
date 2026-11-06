@@ -53,7 +53,8 @@ Requires Node 18 or newer. The `public/` folder also works on any static host (G
   - Pick it for local co-op on one device.
   - Online, the team profile for the two of you is picked automatically on both devices and kept in sync as you clear stages.
   - A new team starts with the furthest progress either of you had on your own.
-  - **Show progress code / Load progress code** moves any profile to another device. Loading a code combines it with what's already there, so nothing is lost.
+  - **Your progress code is saved on the device** and kept up to date automatically; it's shown on the Profile screen, ready to copy to another device.
+  - **Received progress:** codes other people send you are kept on the device in a list, so you can add them to your solo or team profile now or later. Adding combines the progress with what's already there, so nothing is lost. You can also paste a code by hand.
 - **In-game toolbar:** Home, sound and pause buttons, plus the stage, run time and your best for the stage.
 - **Pause menu:** Resume, Restart stage, Level select, Sound and Home. Press **H** to go straight home.
 - **Menus** work with the keyboard (arrow keys and Enter, Esc for back) and controllers (D-pad, A to select, B for back).
@@ -112,7 +113,11 @@ Both modes unlock once you beat World 1, and multiplayer games are played in Wor
 - **Local:** one keyboard with two key sets, or controllers. Controller 1 plays P1 and controller 2 plays P2. With only one controller, it plays P2 and the keyboard plays P1.
 - **Bluetooth:** pair a Bluetooth gamepad with your computer or phone and it works right away through the Gamepad API.
   Browsers *cannot* link two devices to each other over Bluetooth, because Web Bluetooth only talks to accessories and can't advertise. Two-device play therefore uses the online lobby, which also works over a local Wi-Fi network or a phone hotspot.
-- **Online lobby:** one player hosts and gets a 6-character room code, and the friend enters it. The game then runs peer-to-peer over WebRTC.
+- **Online lobby:** one player hosts and gets a 6-character room code, and the friend enters it. You both land in a **room**:
+  - **📤 Share my progress** sends your progress to your partner with one press; it shows up in their *Received progress* list, ready to add to your team.
+  - The host picks the world and presses **Start game**.
+  - You can also share from the pause menu during a game.
+  - Gameplay runs peer-to-peer over WebRTC.
 - **Manual connect:** no server needed. The two players swap a pair of codes by copy and paste.
 
 ## Security
