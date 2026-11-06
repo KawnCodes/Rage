@@ -30,20 +30,6 @@ export class Input {
     window.addEventListener('blur', () => this.down.clear());
   }
 
-  // On-screen touch buttons: <button data-touch="TouchLeft"> etc.
-  bindTouch(root) {
-    for (const el of root.querySelectorAll('[data-touch]')) {
-      const code = el.dataset.touch;
-      const on = (e) => { e.preventDefault(); if (!this.down.has(code)) this.pressed.add(code); this.down.add(code); };
-      const off = (e) => { e.preventDefault(); this.down.delete(code); };
-      el.addEventListener('pointerdown', on);
-      el.addEventListener('pointerup', off);
-      el.addEventListener('pointercancel', off);
-      el.addEventListener('pointerleave', off);
-      el.addEventListener('contextmenu', (e) => e.preventDefault());
-    }
-  }
-
   poll() {
     let list = [];
     try { list = navigator.getGamepads ? Array.from(navigator.getGamepads()) : []; } catch { list = []; }
@@ -99,5 +85,116 @@ export class Input {
   endFrame() {
     this.pressed.clear();
     this.prevPadButtons = this.pads.map((_, i) => this.pad(i));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Touch controls.
+//
+// One full-screen layer tracks every finger (Touch Events, with Pointer Events
+// as a fallback for mouse/pen) and, on every change, works out which virtual
+// button each finger is over. Nothing depends on a touch *starting* inside a
+// button, so:
+//   - taps that land between or just outside the buttons still count
+//   - sliding a thumb from left to right switches direction without lifting
+//   - the state is rebuilt from the live finger list every time, and anything
+//     that can swallow a "finger up" (menus, alerts, app switching, browser
+//     gestures) clears it, so buttons can't get stuck down.
+//
+// Layout "one": left half of the screen = move (left/right of the D-pad
+// centre), right half = jump.
+// Layout "two": left half = player 1, right half = player 2; each finger picks
+// the nearest of that player's three buttons.
+export class TouchPad {
+  constructor(root, input) {
+    this.root = root;
+    this.input = input;
+    this.layout = 'one';
+    this.fingers = new Map(); // id -> { x, y }
+    this.active = new Set(); // codes currently held
+    this.buttons = [...root.querySelectorAll('[data-touch]')];
+    const opt = { passive: false };
+    root.addEventListener('touchstart', (e) => this.onTouch(e), opt);
+    root.addEventListener('touchmove', (e) => this.onTouch(e), opt);
+    root.addEventListener('touchend', (e) => this.onTouch(e), opt);
+    root.addEventListener('touchcancel', (e) => this.onTouch(e), opt);
+    // Mouse / pen (e.g. testing with touch controls forced on).
+    root.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') return;
+      e.preventDefault();
+      try { root.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      this.fingers.set(`p${e.pointerId}`, { x: e.clientX, y: e.clientY });
+      this.sync();
+    });
+    root.addEventListener('pointermove', (e) => {
+      const id = `p${e.pointerId}`;
+      if (e.pointerType === 'touch' || !this.fingers.has(id)) return;
+      this.fingers.set(id, { x: e.clientX, y: e.clientY });
+      this.sync();
+    });
+    const up = (e) => { if (e.pointerType !== 'touch' && this.fingers.delete(`p${e.pointerId}`)) this.sync(); };
+    root.addEventListener('pointerup', up);
+    root.addEventListener('pointercancel', up);
+    root.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Anything that can eat a "finger up" resets the controls.
+    window.addEventListener('blur', () => this.clear());
+    document.addEventListener('visibilitychange', () => this.clear());
+    window.addEventListener('orientationchange', () => this.clear());
+  }
+
+  onTouch(e) {
+    if (e.cancelable) e.preventDefault(); // no scrolling, zooming, callouts or delayed clicks
+    const live = new Set();
+    for (const t of e.touches) live.add(t.identifier);
+    for (const t of e.changedTouches) {
+      if (e.type === 'touchend' || e.type === 'touchcancel') this.fingers.delete(t.identifier);
+      else this.fingers.set(t.identifier, { x: t.clientX, y: t.clientY });
+    }
+    // Drop any finger the browser no longer reports (lost touchend).
+    for (const id of [...this.fingers.keys()]) if (typeof id === 'number' && !live.has(id)) this.fingers.delete(id);
+    this.sync();
+  }
+
+  centre(el) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  codeFor(f) {
+    const box = this.root.getBoundingClientRect();
+    const mid = box.left + box.width / 2;
+    const byCode = (c) => this.buttons.find((b) => b.dataset.touch === c);
+    if (this.layout === 'one') {
+      if (f.x >= mid) return 'TouchJump';
+      const l = this.centre(byCode('TouchLeft')), r = this.centre(byCode('TouchRight'));
+      return f.x < (l.x + r.x) / 2 ? 'TouchLeft' : 'TouchRight';
+    }
+    const group = f.x < mid ? ['TouchLeft', 'TouchRight', 'TouchJump'] : ['TouchLeft2', 'TouchRight2', 'TouchJump2'];
+    let best = null, bestD = Infinity;
+    for (const c of group) {
+      const p = this.centre(byCode(c));
+      const d = Math.abs(p.x - f.x) + Math.abs(p.y - f.y) * 0.35; // mostly horizontal: thumbs drift up and down
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return best;
+  }
+
+  sync() {
+    const now = new Set();
+    if (!this.root.hidden) for (const f of this.fingers.values()) now.add(this.codeFor(f));
+    for (const c of now) if (!this.active.has(c)) this.input.pressed.add(c); // a fresh press, even if released this frame
+    for (const c of this.active) this.input.down.delete(c);
+    for (const c of now) this.input.down.add(c);
+    this.active = now;
+    for (const b of this.buttons) b.classList.toggle('on', now.has(b.dataset.touch));
+  }
+
+  setLayout(layout) {
+    if (layout !== this.layout) { this.layout = layout; this.clear(); }
+  }
+
+  clear() {
+    this.fingers.clear();
+    this.sync();
   }
 }

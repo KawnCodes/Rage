@@ -15,6 +15,7 @@ export function emptySave() {
     best: Array.from({ length: N }, () => null), // { deaths, time } per stage
     totalDeaths: 0,
     wins: 0,
+    cheated: false,
   };
 }
 
@@ -24,6 +25,7 @@ export function clean(raw) {
   s.unlocked = int(raw.unlocked, 0, N - 1, 0);
   s.totalDeaths = int(raw.totalDeaths, 0, 1e9, 0);
   s.wins = int(raw.wins, 0, 1e6, 0);
+  s.cheated = raw.cheated === true;
   const r = raw.run;
   if (r && typeof r === 'object' && (r.mode === 'solo' || r.mode === 'local')) {
     const d = Array.isArray(r.deaths) ? r.deaths : [];

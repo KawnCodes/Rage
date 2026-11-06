@@ -36,7 +36,22 @@ Requires Node 18 or newer. The `public/` folder also works on any static host (G
 
 **R** restarts the stage (it counts as a death), **Esc** pauses and **M** mutes.
 
-**Touch controls** turn on automatically on phones and tablets. In local 2-player each player gets their own set: P1 bottom-left (red), P2 bottom-right (blue), so two people can share one tablet. You can force them on or off under **Controls → Touch controls** (or from the pause menu), for example on a tablet with a keyboard or a touchscreen laptop.
+**Touch controls** turn on automatically on phones and tablets and float over a full-screen game.
+
+- **One player:** touch anywhere on the left half to move (left or right of the ◀ ▶ buttons) and anywhere on the right half to jump. You can slide your thumb between ◀ and ▶ without lifting it.
+- **Local 2-player on one tablet:** the left half belongs to P1 (red) and the right half to P2 (blue). Each finger counts as whichever of that player's buttons is closest.
+- You can force them on or off under **Controls → Touch controls** (or from the pause menu), for example on a tablet with a keyboard or a touchscreen laptop.
+
+**Full screen:** starting a game on a phone or tablet goes full screen automatically where the browser allows it. There's also a ⛶ button and an **F** key. On iPhone, Safari doesn't allow web pages to go full screen; instead tap Share → **Add to Home Screen** and open RAGE from the home screen.
+
+**Cheat codes:** Main menu → **Cheat codes**.
+| Code | Does |
+|---|---|
+| `FRIENDS` | Unlocks multiplayer (World 2, Local 2 player and Online) |
+| `HUZZAR` | Unlocks every world and stage |
+| `ASIA` | Unlocks everything too, with a personal hello |
+
+Cheats mark your save with "cheats used" on the main menu.
 
 ### Menus, saving and level select
 

@@ -1,7 +1,7 @@
 // Boot, menus, main loop, and online wiring.
 import { World } from './game.js';
 import { W, H } from './levels.js';
-import { Input } from './input.js';
+import { Input, TouchPad } from './input.js';
 import { initAudio, sfx, setMuted, isMuted } from './audio.js';
 import { drawTextCentered } from './font.js';
 import { PeerLink, Signaling } from './net.js';
@@ -35,19 +35,24 @@ let currentPanel = null;
 
 // ---------- layout ----------
 function fit() {
-  const bar = $('#toolbar').hidden ? 0 : 44;
+  // On touch devices the game fills the screen and the toolbar floats over it.
+  const overlay = document.body.classList.contains('touch-on');
+  const bar = $('#toolbar').hidden || overlay ? 0 : 44;
   const s = Math.min(window.innerWidth / W, (window.innerHeight - bar) / H);
-  const scale = s >= 2 ? Math.floor(s) : s; // integer scaling when there is room, fit otherwise
+  const scale = s >= 2 && !overlay ? Math.floor(s) : s; // crisp integer scaling on desktop, fill the screen on touch
   canvas.style.width = `${Math.floor(W * scale)}px`;
   canvas.style.height = `${Math.floor(H * scale)}px`;
+  // Room beside the game for the floating buttons? (phones held sideways)
+  document.body.classList.toggle('tb-side', overlay && (window.innerWidth - W * scale) / 2 >= 52);
   $('#app').style.setProperty('--game-w', `${Math.floor(W * scale)}px`);
 }
 window.addEventListener('resize', fit);
+window.addEventListener('orientationchange', () => setTimeout(fit, 150));
 fit();
 
 // ---------- menus ----------
-const panels = ['menu-main', 'menu-levels', 'menu-online', 'menu-manual', 'menu-controls', 'menu-pause'];
-input.bindTouch($('#touch'));
+const panels = ['menu-main', 'menu-levels', 'menu-online', 'menu-manual', 'menu-controls', 'menu-cheats', 'menu-pause'];
+const touchPad = new TouchPad($('#touch'), input);
 
 // ---------- touch controls ----------
 // 'auto' shows them on phones/tablets; 'on'/'off' force it (e.g. a tablet with a keyboard).
@@ -64,11 +69,51 @@ function updateTouchUi() {
   const label = `Touch controls: ${touchMode}${touchMode === 'auto' ? (isTouchDevice() ? ' (on)' : ' (off)') : ''}`;
   for (const b of document.querySelectorAll('.touch-btn')) b.textContent = label;
   const t = $('#touch');
-  t.hidden = currentPanel !== null || !world || !touchActive();
+  const hide = currentPanel !== null || !world || !touchActive();
+  if (hide !== t.hidden) { t.hidden = hide; touchPad.clear(); } // never carry a held button into/out of a menu
   t.dataset.layout = mode === 'local' ? 'two' : 'one';
+  touchPad.setLayout(t.dataset.layout);
+  const was = document.body.classList.contains('touch-on');
   document.body.classList.toggle('touch-on', touchActive());
   document.body.classList.toggle('playing', !!world && currentPanel === null);
+  if (was !== touchActive()) fit();
 }
+
+// ---------- full screen ----------
+const fsSupported = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const isStandalone = () => {
+  try { return window.matchMedia('(display-mode: fullscreen)').matches || window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { return false; }
+};
+async function enterFullscreen() {
+  if (isFullscreen() || !fsSupported()) return;
+  const el = document.documentElement;
+  try {
+    if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' });
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    // Phones: try to stay sideways (Android only; ignored elsewhere).
+    if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape').catch(() => {});
+  } catch { /* the browser said no: carry on windowed */ }
+}
+async function toggleFullscreen() {
+  if (isFullscreen()) {
+    try { await (document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen()); } catch { /* ignore */ }
+  } else if (fsSupported()) {
+    await enterFullscreen();
+  } else {
+    toast(isStandalone() ? 'Already full screen' : 'On iPhone: tap Share, then Add to Home Screen for full screen', 4000);
+  }
+}
+function updateFullscreenUi() {
+  for (const b of document.querySelectorAll('.fs-btn')) {
+    const on = isFullscreen() || isStandalone();
+    b.textContent = b.closest('#toolbar') ? '⛶' : on ? 'Exit full screen' : 'Full screen';
+    b.hidden = !fsSupported() && !b.closest('#toolbar') && isStandalone();
+  }
+  $('#ios-fs-note').hidden = fsSupported() || isStandalone() || !isTouchDevice();
+}
+document.addEventListener('fullscreenchange', () => { updateFullscreenUi(); fit(); });
+document.addEventListener('webkitfullscreenchange', () => { updateFullscreenUi(); fit(); });
 // A first touch anywhere on a device we didn't detect switches 'auto' on.
 window.addEventListener('touchstart', () => { if (touchMode === 'auto') updateTouchUi(); }, { passive: true });
 
@@ -82,6 +127,7 @@ function show(id) {
   if (id === 'menu-main') refreshMain();
   if (id === 'menu-pause') refreshPause();
   if (id === null) { document.activeElement?.blur?.(); return; }
+  if (touchActive()) return; // no focus rings / pop-up keyboards on phones
   const first = $(`#${id} button:not([hidden]):not(:disabled), #${id} input`);
   if (first) first.focus({ preventScroll: true });
 }
@@ -171,6 +217,9 @@ const actions = {
   online: () => { if (requireMultiplayer()) { renderWorldPick(); show('menu-online'); checkServer(); } },
   controls: () => { show('menu-controls'); renderPads(); },
   mute: () => toggleMute(),
+  fullscreen: () => toggleFullscreen(),
+  cheats: () => { $('#in-cheat').value = ''; setStatus('#cheat-status', ''); show('menu-cheats'); },
+  'cheat-submit': () => enterCheat($('#in-cheat').value),
   'touch-mode': () => {
     touchMode = TOUCH_MODES[(TOUCH_MODES.indexOf(touchMode) + 1) % TOUCH_MODES.length];
     store.set('rage-touch', touchMode);
@@ -237,6 +286,7 @@ function startGame(m, opts = {}) {
   if (m === 'host') opts = { ...opts, startLevel: hostStartLevel() }; // online play is World 2 onwards
   world = new World({ mode: m, names, onEvent, ...opts });
   autosave();
+  if (touchActive()) enterFullscreen(); // started by a tap, so the browser allows it
   show(null);
 }
 
@@ -249,6 +299,40 @@ function newRun(m, startLevel = 0) {
   }
   startGame(m, { startLevel: lv });
 }
+
+// ---------- cheat codes ----------
+// Plain on purpose: it's a single-player unlock stored in your own browser.
+const CHEATS = {
+  FRIENDS: {
+    msg: 'Multiplayer unlocked! World 2, Local 2 player and Online are open.',
+    apply: (s) => { s.unlocked = Math.max(s.unlocked, MULTIPLAYER_START); },
+  },
+  HUZZAR: {
+    msg: 'HUZZAR!! Every world and stage is unlocked.',
+    apply: (s) => { s.unlocked = LEVELS.length - 1; },
+  },
+  ASIA: {
+    msg: 'Hi Asia! Every world and stage is unlocked, just for you.',
+    apply: (s) => { s.unlocked = LEVELS.length - 1; },
+  },
+};
+
+function enterCheat(raw) {
+  const code = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
+  const c = CHEATS[code];
+  if (!c) {
+    sfx('die');
+    setStatus('#cheat-status', code ? 'Nope. That is not a code.' : 'Type a code first.', true);
+    return;
+  }
+  c.apply(save);
+  save.cheated = true;
+  Save.store(save);
+  sfx('huzzar');
+  setStatus('#cheat-status', c.msg);
+  $('#in-cheat').value = '';
+}
+$('#in-cheat').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); enterCheat(e.target.value); } });
 
 function requireMultiplayer() {
   if (Save.multiplayerUnlocked(save)) return true;
@@ -316,6 +400,7 @@ function refreshMain() {
   $('#coop-note').hidden = save.unlocked < COOP_START;
   const bits = [`Lifetime deaths: ${save.totalDeaths}`];
   if (save.wins) bits.push(`Wins: ${save.wins}`);
+  if (save.cheated) bits.push('cheats used 😏');
   $('#stats-line').textContent = bits.join(' · ');
 }
 
@@ -667,6 +752,7 @@ function step() {
       else setPaused(!paused);
     }
     if (input.wasPressed('KeyM')) toggleMute();
+    if (input.wasPressed('KeyF')) toggleFullscreen();
     if (input.wasPressed('KeyH') && !currentPanel) { goHome(); input.endFrame(); return; }
     if (world.frame % 300 === 0 && savesRuns()) autosave();
     updateToolbar();
@@ -740,5 +826,6 @@ async function showLanAddress() {
 
 show('menu-main');
 updateTouchUi();
+updateFullscreenUi();
 showLanAddress();
 requestAnimationFrame(frame);
