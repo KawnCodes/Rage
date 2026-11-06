@@ -15,10 +15,20 @@ export function initAudio() {
 export function setMuted(m) { muted = !!m; }
 export function isMuted() { return muted; }
 
-// [startHz, endHz, seconds, wave, volume, delay]
+// [startHz, endHz, seconds, wave, volume, delay, vibratoHz, vibratoDepthHz]
 const SFX = {
   jump: [[330, 660, 0.09, 'square', 0.05]],
-  die: [[420, 60, 0.35, 'sawtooth', 0.08], [200, 40, 0.3, 'square', 0.05, 0.05]],
+  // Deaths: one of these plays at random (see DEATHS below).
+  dieTrombone: [ // wah wah wah waaaah
+    [392, 380, 0.17, 'sawtooth', 0.055, 0], [370, 358, 0.17, 'sawtooth', 0.055, 0.19],
+    [349, 338, 0.17, 'sawtooth', 0.055, 0.38], [330, 300, 0.42, 'sawtooth', 0.055, 0.57, 7, 9],
+  ],
+  dieWhistle: [ // slide whistle down ... bonk
+    [1500, 260, 0.5, 'sine', 0.07, 0, 9, 25], [140, 90, 0.09, 'square', 0.07, 0.52],
+  ],
+  dieBalloon: [ // deflating raspberry
+    [180, 70, 0.7, 'sawtooth', 0.06, 0, 14, 22], [90, 45, 0.7, 'square', 0.03, 0, 11, 10],
+  ],
   boing: [[180, 880, 0.18, 'square', 0.06]],
   bonk: [[140, 90, 0.08, 'square', 0.07]],
   spike: [[900, 1400, 0.05, 'square', 0.05]],
@@ -43,13 +53,26 @@ const SFX = {
   clank: [[1200, 700, 0.06, 'square', 0.06], [900, 500, 0.08, 'triangle', 0.05, 0.05]],
 };
 
-function tone(f0, f1, dur, type, vol, delay = 0) {
+const DEATHS = ['dieTrombone', 'dieWhistle', 'dieBalloon'];
+let lastDeath = -1;
+
+function tone(f0, f1, dur, type, vol, delay = 0, vibHz = 0, vibDepth = 0) {
   const t = ac.currentTime + delay;
   const o = ac.createOscillator();
   const g = ac.createGain();
   o.type = type;
   o.frequency.setValueAtTime(f0, t);
   o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  if (vibHz > 0) {
+    // wobble: a slow oscillator nudging the pitch up and down
+    const lfo = ac.createOscillator();
+    const depth = ac.createGain();
+    lfo.frequency.setValueAtTime(vibHz, t);
+    depth.gain.setValueAtTime(vibDepth, t);
+    lfo.connect(depth).connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g).connect(ac.destination);
@@ -59,9 +82,16 @@ function tone(f0, f1, dur, type, vol, delay = 0) {
 
 export function sfx(name) {
   if (muted || !ac || ac.state !== 'running') return;
+  if (name === 'die') {
+    // pick a funny death sound, never the same one twice in a row
+    let i = Math.floor(Math.random() * DEATHS.length);
+    if (i === lastDeath) i = (i + 1) % DEATHS.length;
+    lastDeath = i;
+    name = DEATHS[i];
+  }
   const s = SFX[name];
   if (!s) return;
   try {
-    for (const [f0, f1, d, type, v, delay] of s) tone(f0, f1, d, type, v, delay);
+    for (const [f0, f1, d, type, v, delay, vib, depth] of s) tone(f0, f1, d, type, v, delay, vib, depth);
   } catch { /* audio is optional */ }
 }
