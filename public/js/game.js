@@ -46,18 +46,22 @@ class Player {
 }
 
 export class World {
-  constructor({ mode, names = [], onEvent }) {
+  constructor({ mode, names = [], onEvent, startLevel = 0, deaths = [0, 0], time = 0 }) {
     this.mode = mode;
     this.auth = mode !== 'guest';
     this.onEvent = onEvent || (() => {});
     const count = mode === 'solo' ? 1 : 2;
     this.players = [];
-    for (let i = 0; i < count; i++) this.players.push(new Player(i, names[i] || `P${i + 1}`));
+    for (let i = 0; i < count; i++) {
+      const p = new Player(i, names[i] || `P${i + 1}`);
+      p.deaths = deaths[i] || 0;
+      this.players.push(p);
+    }
     this.localIdx = mode === 'guest' ? [1] : mode === 'host' ? [0] : mode === 'local' ? [0, 1] : [0];
     this.particles = [];
     this.bullets = [];
     this.frame = 0;
-    this.time = 0;
+    this.time = time;
     this.shake = 0;
     this.taunt = null;
     this.trans = null;
@@ -65,7 +69,11 @@ export class World {
     this.snapSeq = 0;
     this.lastSnapSeq = -1;
     this.mismatch = 0;
-    this.loadLevel(0);
+    this.loadLevel(LEVELS[startLevel] ? startLevel : 0);
+  }
+
+  localDeaths() {
+    return this.players.filter((p) => this.isLocal(p)).reduce((a, p) => a + p.deaths, 0);
   }
 
   isLocal(p) { return this.localIdx.includes(p.idx); }
@@ -94,6 +102,8 @@ export class World {
       if (!this.isLocal(p)) p.synced = false;
     }
     this.levelDone = false;
+    this.levelStartTime = this.time;
+    this.levelStartDeaths = this.localDeaths();
     this.banner = 110;
     this.particles = [];
     this.lastSnapSeq = -1;
@@ -406,6 +416,11 @@ export class World {
     if (this.levelDone) return;
     this.levelDone = true;
     sfx('door');
+    this.onEvent('level-complete', {
+      level: this.levelIndex,
+      deaths: this.localDeaths() - this.levelStartDeaths,
+      time: Math.max(1, this.time - this.levelStartTime),
+    });
     if (this.levelIndex >= BOSS_LEVEL) {
       this.won = true;
       this.onEvent('victory');

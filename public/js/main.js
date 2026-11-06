@@ -7,7 +7,8 @@ import { drawTextCentered } from './font.js';
 import { PeerLink, Signaling } from './net.js';
 import { PROTOCOL_VERSION, sanitizeName, encodeManual, decodeManual, ROOM_CODE_RE } from './protocol.js';
 import { renderLevelCanvas } from './sprites.js';
-import { LEVELS } from './levels.js';
+import { LEVELS, BOSS_LEVEL } from './levels.js';
+import * as Save from './save.js';
 
 const $ = (sel) => document.querySelector(sel);
 const canvas = $('#screen');
@@ -28,28 +29,59 @@ let sig = null;
 let partnerName = 'FRIEND';
 let lastDoorMsg = 0;
 let pingN = 0;
+let save = Save.load();
+let lvMode = 'solo';
+let currentPanel = null;
 
 // ---------- layout ----------
 function fit() {
-  const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+  const bar = $('#toolbar').hidden ? 0 : 44;
+  const s = Math.min(window.innerWidth / W, (window.innerHeight - bar) / H);
   const scale = s >= 2 ? Math.floor(s) : s; // integer scaling when there is room, fit otherwise
   canvas.style.width = `${Math.floor(W * scale)}px`;
   canvas.style.height = `${Math.floor(H * scale)}px`;
+  $('#app').style.setProperty('--game-w', `${Math.floor(W * scale)}px`);
 }
 window.addEventListener('resize', fit);
 fit();
 
 // ---------- menus ----------
-const panels = ['menu-main', 'menu-online', 'menu-manual', 'menu-controls', 'menu-pause'];
+const panels = ['menu-main', 'menu-levels', 'menu-online', 'menu-manual', 'menu-controls', 'menu-pause'];
 input.bindTouch($('#touch'));
-$('#touch-pause').addEventListener('click', () => { if (world && !world.won) { paused = true; show('menu-pause'); } });
 
 function show(id) {
+  currentPanel = id;
   for (const p of panels) $(`#${p}`).hidden = p !== id;
   input.capture = id === null;
   $('#touch').hidden = id !== null;
-  const first = id && $(`#${id} button, #${id} input`);
+  const barHidden = !world;
+  if ($('#toolbar').hidden !== barHidden) { $('#toolbar').hidden = barHidden; fit(); }
+  if (id === 'menu-main') refreshMain();
+  if (id === 'menu-pause') refreshPause();
+  if (id === null) { document.activeElement?.blur?.(); return; }
+  const first = $(`#${id} button:not([hidden]):not(:disabled), #${id} input`);
   if (first) first.focus({ preventScroll: true });
+}
+
+// Arrow keys / D-pad move between buttons in menus; Enter / A presses.
+function menuNav() {
+  const panel = currentPanel && $(`#${currentPanel}`);
+  if (!panel) return;
+  const items = [...panel.querySelectorAll('button, input, textarea')].filter((el) => el.offsetParent !== null && !el.disabled);
+  if (!items.length) return;
+  const i = items.indexOf(document.activeElement);
+  const next = input.wasPressed('ArrowDown') || input.wasPressed('ArrowRight') || input.padPressed('down') || input.padPressed('right');
+  const prev = input.wasPressed('ArrowUp') || input.wasPressed('ArrowLeft') || input.padPressed('up') || input.padPressed('left');
+  if (next || prev) {
+    const j = i < 0 ? 0 : (i + (next ? 1 : -1) + items.length) % items.length;
+    items[j].focus();
+  }
+  if (input.padPressed('a') && i >= 0 && items[i].tagName === 'BUTTON') items[i].click();
+  // In-game, Escape/Start is handled by the pause logic in step().
+  if (!world && (input.wasPressed('Escape') || input.padPressed('back'))) {
+    if (currentPanel === 'menu-manual') actions['back-online']();
+    else if (currentPanel !== 'menu-main' && currentPanel !== 'menu-pause') actions.back();
+  }
 }
 
 let toastTimer = 0;
@@ -67,7 +99,13 @@ function setStatus(id, msg, err = false) {
   el.classList.toggle('err', err);
 }
 
-function updateMuteLabel() { $('#btn-mute').textContent = `Sound: ${isMuted() ? 'off' : 'on'}`; }
+function updateMuteLabel() {
+  const label = `Sound: ${isMuted() ? 'off' : 'on'}`;
+  $('#btn-mute').textContent = label;
+  for (const b of document.querySelectorAll('.mute-btn')) b.textContent = label;
+  $('#toolbar .tb-mute').classList.toggle('off', isMuted());
+}
+function toggleMute() { setMuted(!isMuted()); store.set('rage-muted', isMuted() ? '1' : '0'); updateMuteLabel(); }
 setMuted(store.get('rage-muted') === '1');
 updateMuteLabel();
 
@@ -83,19 +121,41 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   initAudio();
   sfx('select');
-  actions[b.dataset.go]?.();
+  // Don't leave focus on toolbar buttons, or Space (jump) would press them again.
+  if (b.closest('#toolbar')) b.blur();
+  actions[b.dataset.go]?.(b);
 });
 // Unlock audio on first gesture of any kind.
 window.addEventListener('keydown', initAudio, { once: true });
 window.addEventListener('pointerdown', initAudio, { once: true });
 
 const actions = {
-  solo: () => startGame('solo'),
-  local: () => startGame('local'),
+  continue: () => {
+    const r = save.run;
+    if (r) startGame(r.mode, { startLevel: r.level, deaths: r.deaths, time: r.time });
+  },
+  'new-solo': () => newRun('solo'),
+  'new-local': () => newRun('local'),
+  levels: () => { renderLevels(); show('menu-levels'); },
+  'lvmode-solo': () => { lvMode = 'solo'; renderLevels(); },
+  'lvmode-local': () => { lvMode = 'local'; renderLevels(); },
+  'reset-progress': () => {
+    if (!window.confirm('Reset all progress, unlocks and best times?')) return;
+    save = Save.wipe();
+    renderLevels();
+    toast('Progress reset');
+  },
   online: () => { show('menu-online'); checkServer(); },
   controls: () => { show('menu-controls'); renderPads(); },
-  mute: () => { setMuted(!isMuted()); store.set('rage-muted', isMuted() ? '1' : '0'); updateMuteLabel(); },
-  back: () => { cancelOnline(); show('menu-main'); },
+  mute: () => toggleMute(),
+  home: () => goHome(),
+  pause: () => setPaused(!paused),
+  restart: () => { if (world) { world.localIdx.forEach((i) => world.restart(i)); setPaused(false); } },
+  back: () => {
+    if (world && paused) { show('menu-pause'); return; }
+    cancelOnline();
+    show('menu-main');
+  },
   'back-online': () => { cancelOnline(); resetManualUi(); show('menu-online'); checkServer(); },
   host: () => hostRoom(),
   join: () => joinRoom(),
@@ -106,7 +166,7 @@ const actions = {
   'copy-answer': () => copy('#mg-answer'),
   'mh-connect': () => manualHostConnect(),
   'mg-make': () => manualGuestAnswer(),
-  resume: () => { paused = false; show(null); },
+  resume: () => setPaused(false),
   quit: () => quitToMenu(),
 };
 
@@ -141,16 +201,49 @@ async function copy(sel) {
 }
 
 // ---------- game lifecycle ----------
-function startGame(m) {
+function startGame(m, opts = {}) {
   mode = m;
   paused = false;
   const names = m === 'host' ? [myName(), partnerName] : m === 'guest' ? [partnerName, myName()] : ['P1', 'P2'];
-  world = new World({ mode: m, names, onEvent });
+  world = new World({ mode: m, names, onEvent, ...opts });
+  autosave();
   show(null);
-  canvas.focus?.();
+}
+
+function newRun(m, startLevel = 0) {
+  startGame(m, { startLevel: Math.min(startLevel, save.unlocked) });
+}
+
+const savesRuns = () => mode === 'solo' || mode === 'local';
+
+function autosave() {
+  if (world && savesRuns() && !world.won) {
+    save.run = {
+      mode,
+      level: world.trans ? world.trans.next : world.levelIndex,
+      deaths: world.players.map((p) => p.deaths).concat(0).slice(0, 2),
+      time: world.time,
+    };
+  }
+  Save.store(save);
+}
+
+function setPaused(on) {
+  if (!world || world.won) return;
+  paused = on;
+  if (on) autosave();
+  show(on ? 'menu-pause' : null);
+}
+
+function goHome() {
+  if (!world) return;
+  if ((mode === 'host' || mode === 'guest') && !window.confirm('Leave the online game? Your partner will be disconnected.')) return;
+  quitToMenu();
+  if (savesRuns()) toast('Progress saved', 1500);
 }
 
 function quitToMenu() {
+  autosave();
   if (link) { link.send({ t: 'bye' }, true); }
   cancelOnline();
   world = null;
@@ -159,7 +252,106 @@ function quitToMenu() {
   show('menu-main');
 }
 
-function onEvent(type) {
+// ---------- menus: main / pause / level select ----------
+function stageLabel(i) { return i >= BOSS_LEVEL ? 'Boss' : `Stage ${i + 1}`; }
+
+function refreshMain() {
+  const r = save.run;
+  const btn = $('#btn-continue');
+  btn.hidden = !r;
+  if (r) {
+    const deaths = r.mode === 'local' ? r.deaths[0] + r.deaths[1] : r.deaths[0];
+    btn.textContent = `Continue: ${stageLabel(r.level)} ${r.mode === 'local' ? '(2P) ' : ''}· ${deaths} deaths`;
+  }
+  const bits = [`Lifetime deaths: ${save.totalDeaths}`];
+  if (save.wins) bits.push(`Wins: ${save.wins}`);
+  $('#stats-line').textContent = bits.join(' · ');
+}
+
+function refreshPause() {
+  const online = mode === 'host' || mode === 'guest';
+  for (const el of document.querySelectorAll('#menu-pause .offline-only')) el.hidden = online;
+  if (world) {
+    const b = save.best[world.levelIndex];
+    $('#pause-info').textContent = `${stageLabel(world.levelIndex)}: ${world.level.name}` +
+      (b ? ` · best ${b.deaths} deaths, ${Save.formatTime(b.time)}` : '') +
+      (online ? ' · online game keeps running' : '');
+  }
+  updateMuteLabel();
+}
+
+function renderLevels() {
+  $('#lvmode-solo').setAttribute('aria-checked', String(lvMode === 'solo'));
+  $('#lvmode-local').setAttribute('aria-checked', String(lvMode === 'local'));
+  const grid = $('#level-grid');
+  grid.replaceChildren();
+  LEVELS.forEach((L, i) => {
+    const locked = i > save.unlocked;
+    const b = document.createElement('button');
+    b.className = `level-card${locked ? ' locked' : ''}${i >= BOSS_LEVEL ? ' boss' : ''}`;
+    b.disabled = locked;
+    const num = document.createElement('span');
+    num.className = 'num';
+    num.textContent = locked ? `${stageLabel(i)} · locked` : stageLabel(i);
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = locked ? '???' : L.name;
+    const best = document.createElement('span');
+    best.className = 'best';
+    const bs = save.best[i];
+    best.textContent = locked ? '' : bs ? `Best: ${bs.deaths} deaths · ${Save.formatTime(bs.time)}` : 'Not cleared yet';
+    b.append(num, name, best);
+    b.addEventListener('click', () => { initAudio(); sfx('select'); newRun(lvMode, i); });
+    grid.append(b);
+  });
+}
+
+// Toolbar info line, refreshed a few times a second.
+let lastInfo = '';
+function updateToolbar() {
+  if (!world || world.frame % 15 !== 0) return;
+  const parts = [`${stageLabel(world.levelIndex)}/${BOSS_LEVEL + 1}`, `Run ${Save.formatTime(world.time)}`];
+  const b = save.best[world.levelIndex];
+  if (b) parts.push(`Best ${b.deaths}☠ ${Save.formatTime(b.time)}`);
+  if (mode === 'host' || mode === 'guest') parts.push(`with ${partnerName}`);
+  const txt = parts.join(' · ');
+  if (txt !== lastInfo) { lastInfo = txt; $('#tb-info').textContent = txt; }
+}
+
+window.addEventListener('pagehide', () => { if (world) autosave(); });
+// Another tab saved: pick up its progress (keeping our run if we're mid-game).
+window.addEventListener('storage', (e) => {
+  if (e.key !== null && e.key !== 'rage-save-v1') return;
+  const fresh = Save.load();
+  if (world && savesRuns()) fresh.run = save.run;
+  save = fresh;
+  if (currentPanel === 'menu-main') refreshMain();
+  if (currentPanel === 'menu-levels') renderLevels();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && world) {
+    autosave();
+    if (world && !paused && savesRuns() && !world.won) setPaused(true);
+  }
+});
+
+function onEvent(type, data) {
+  if (type === 'death' && world && data && world.isLocal(data)) {
+    save.totalDeaths++;
+    autosave();
+  }
+  if (type === 'level-complete' && data && mode !== 'guest') {
+    Save.recordClear(save, data.level, data.deaths, data.time);
+    const b = save.best[data.level];
+    if (b && b.time === data.time && b.deaths === data.deaths) toast('New personal best!', 1800);
+    Save.store(save);
+  }
+  if (type === 'level-loaded') autosave();
+  if (type === 'victory') {
+    save.wins++;
+    if (savesRuns()) save.run = null;
+    Save.store(save);
+  }
   if (type === 'level-loaded' && mode === 'host' && link) link.send({ t: 'lvl', lv: world.levelIndex }, true);
   if (type === 'victory' && mode === 'host' && link) link.send({ t: 'win' }, true);
   if (type === 'guest-door' && link) {
@@ -362,13 +554,17 @@ const NEUTRAL = { left: false, right: false, jump: false, jumpPressed: false };
 
 function step() {
   input.poll();
+  if (currentPanel) menuNav();
   if (world) {
     const online = mode === 'host' || mode === 'guest';
     if ((input.wasPressed('Escape') || input.padPressed('start')) && !world.won) {
-      paused = !paused;
-      show(paused ? 'menu-pause' : null);
+      if (paused && currentPanel !== 'menu-pause') show('menu-pause');
+      else setPaused(!paused);
     }
-    if (input.wasPressed('KeyM')) { setMuted(!isMuted()); store.set('rage-muted', isMuted() ? '1' : '0'); updateMuteLabel(); }
+    if (input.wasPressed('KeyM')) toggleMute();
+    if (input.wasPressed('KeyH') && !currentPanel) { goHome(); input.endFrame(); return; }
+    if (world.frame % 300 === 0 && savesRuns()) autosave();
+    updateToolbar();
     if (world.won && (input.wasPressed('Enter') || input.wasPressed('TouchJump') || input.wasPressed('Space') || input.padPressed('jump'))) {
       quitToMenu();
     } else if (!paused || online) {

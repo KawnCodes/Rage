@@ -62,7 +62,11 @@ export class Input {
     return {
       left: ax < -0.4 || b(14),
       right: ax > 0.4 || b(15),
+      up: (p.axes[1] || 0) < -0.5 || b(12),
+      down: (p.axes[1] || 0) > 0.5 || b(13),
       jump: b(0) || b(1),
+      a: b(0),
+      back: b(1),
       start: b(9),
     };
   }

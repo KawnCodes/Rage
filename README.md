@@ -23,6 +23,16 @@ Requires Node 18 or newer. The `public/` folder also works on any static host (G
 
 **R** restarts the stage (it counts as a death), **Esc** pauses and **M** mutes. Phones get on-screen buttons.
 
+### Menus, saving and level select
+
+- **Autosave:** your run (stage, deaths, time) saves automatically on every stage change, every death, when you pause, and when you leave the page. **Continue** on the main menu picks up where you left off.
+- **Level select:** stages unlock as you beat them. Each card shows your best (fewest deaths, fastest clear). You can start any unlocked stage in Solo or Local 2P. **Reset progress** wipes everything.
+- **In-game toolbar:** Home, sound and pause buttons, plus the stage, run time and your best for the stage.
+- **Pause menu:** Resume, Restart stage, Level select, Sound and Home. Press **H** to go straight home.
+- **Menus** work with the keyboard (arrow keys and Enter, Esc for back) and controllers (D-pad, A to select, B for back).
+
+Saves stay in your browser (`localStorage`) and never leave your machine. A save is checked and cleaned up when it loads, so a corrupted or hand-edited save can't break the game. Online games don't save a run, but clearing stages as host still unlocks them.
+
 ### Stages
 1. **Welcome**: "this one is easy :)" (it is not)
 2. **Shy Door**: hidden blocks and a door that runs away from you
@@ -69,6 +79,7 @@ public/            the game (works from any static host)
   js/levels.js     stage layouts
   js/net.js        WebRTC link + lobby client
   js/protocol.js   message validation (shared with the server)
+  js/save.js       autosave, unlocks and best times
 server/server.js   static files + lobby, zero dependencies
 test/              node:test suites
 ```
