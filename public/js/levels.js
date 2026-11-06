@@ -11,7 +11,10 @@
 //   Q  fake door (it bites)   C  crumbling block
 //   H  hidden spike           X  falling block   V  falling spike
 //   S  horizontal saw         Z  vertical saw    J  spring
-//   B  boss
+//   B  boss (its settings come from the level's `boss` field)
+//   { }  conveyor belt moving left / right (solid)
+//   O o  on/off blocks, groups A / B (they take turns being solid)
+//   L l  ceiling laser, two timings (fires a beam straight down)
 
 export const TILE = 8;
 export const COLS = 40;
@@ -19,7 +22,7 @@ export const ROWS = 23;
 export const W = COLS * TILE; // 320
 export const H = ROWS * TILE; // 184
 
-function build(name, sign, paint) {
+function build(name, sign, paint, extra = {}) {
   const g = Array.from({ length: ROWS }, () => Array(COLS).fill(' '));
   const L = {
     rect(x, y, w, h, c) {
@@ -36,10 +39,10 @@ function build(name, sign, paint) {
   L.rect(0, 0, 1, ROWS, '#');
   L.rect(COLS - 1, 0, 1, ROWS, '#');
   paint(L);
-  return Object.freeze({ name, sign, rows: Object.freeze(g.map((r) => r.join(''))) });
+  return { name, sign, rows: Object.freeze(g.map((r) => r.join(''))), boss: null, ...extra };
 }
 
-export const LEVELS = Object.freeze([
+const WORLD1 = [
   build('WELCOME', 'WELCOME! THIS ONE IS EASY :)', (L) => {
     L.rect(0, 20, 40, 3, '#');
     L.set(2, 19, 'P'); L.set(3, 19, 'p');
@@ -112,7 +115,92 @@ export const LEVELS = Object.freeze([
     L.rect(3, 15, 5, 1, '=');
     L.rect(32, 15, 5, 1, '=');
     L.set(19, 4, 'B');
-  }),
-]);
+  }, { boss: { kind: 0, hp: 4 } }),
+];
 
-export const BOSS_LEVEL = LEVELS.length - 1;
+// ---- World 2: THE MACHINE (unlocks after The Grudge; multiplayer starts here) ----
+const WORLD2 = [
+  build('CONVEYOR', 'THE FLOOR HAS OPINIONS', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(6, 20, 10, 1, '{');
+    L.rect(16, 20, 3, 1, '^');
+    L.rect(19, 20, 8, 1, '}');
+    L.rect(27, 20, 2, 1, '^');
+    L.set(24, 1, 'L');
+    L.set(33, 10, 'X');
+    L.set(37, 19, 'D');
+  }),
+
+  build('BLINK', 'NOW YOU SEE IT', (L) => {
+    L.rect(0, 20, 6, 3, '#');
+    L.rect(6, 21, 28, 2, '#'); L.rect(6, 20, 28, 1, '^');
+    L.rect(34, 20, 6, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(8, 17, 3, 1, 'O');
+    L.rect(13, 17, 3, 1, 'o');
+    L.rect(18, 17, 3, 1, 'O');
+    L.rect(23, 17, 3, 1, 'o');
+    L.rect(28, 17, 3, 1, 'O');
+    L.set(36, 19, 'H');
+    L.set(38, 19, 'D');
+  }),
+
+  build('LASER TAG', 'RED MEANS NO', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.set(8, 1, 'L'); L.set(14, 1, 'l'); L.set(20, 1, 'L'); L.set(26, 1, 'l'); L.set(32, 1, 'L');
+    L.set(17, 19, 'H');
+    L.rect(23, 20, 1, 3, 'F');
+    L.set(29, 19, 'H');
+    L.set(37, 19, 'D');
+  }),
+
+  build('GAUNTLET', 'EVERYTHING AT ONCE :)', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.rect(10, 20, 29, 1, '^');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(11, 17, 4, 1, '}');
+    L.rect(17, 15, 3, 1, 'O');
+    L.rect(22, 13, 3, 1, 'o');
+    L.rect(27, 11, 4, 1, '=');
+    L.set(29, 1, 'l');
+    L.rect(33, 9, 6, 1, '{');
+    L.set(37, 8, 'D');
+  }),
+
+  build('THE OVERCLOCK', 'IT GOT AN UPGRADE', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.rect(1, 20, 7, 1, '}'); L.rect(32, 20, 7, 1, '{');
+    L.set(3, 19, 'P'); L.set(5, 19, 'p');
+    L.rect(3, 15, 5, 1, '=');
+    L.rect(32, 15, 5, 1, '=');
+    L.set(19, 4, 'B');
+  }, { boss: { kind: 1, hp: 6 } }),
+];
+
+export const WORLDS = Object.freeze([
+  { name: 'THE PIT', levels: WORLD1 },
+  { name: 'THE MACHINE', levels: WORLD2 },
+].map((w, wi, all) => {
+  const start = all.slice(0, wi).reduce((n, x) => n + x.levels.length, 0);
+  return Object.freeze({ name: w.name, start, end: start + w.levels.length - 1 });
+}));
+
+export const LEVELS = Object.freeze([...WORLD1, ...WORLD2].map((L, i) => {
+  const world = WORLDS.findIndex((w) => i >= w.start && i <= w.end);
+  return Object.freeze({ ...L, world, stage: i - WORLDS[world].start });
+}));
+
+// Multiplayer (local 2P and online) is only available from World 2 onwards.
+export const MULTIPLAYER_START = WORLDS[1].start;
+
+export const isBossLevel = (i) => !!(LEVELS[i] && LEVELS[i].boss);
+export const isLastWorld = (w) => w >= WORLDS.length - 1;
+
+// "1-3", "1-BOSS", "2-1" ...
+export function stageLabel(i) {
+  const L = LEVELS[i];
+  if (!L) return '?';
+  return `${L.world + 1}-${L.boss ? 'BOSS' : L.stage + 1}`;
+}

@@ -7,7 +7,7 @@
 // with numbers clamped to sane ranges. Unknown fields are dropped. Nothing
 // received is ever passed to innerHTML / eval / URLs.
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MAX_MESSAGE_BYTES = 8192;
 export const MAX_SDP_LENGTH = 16000;
 export const MAX_SIGNAL_BYTES = 20000;

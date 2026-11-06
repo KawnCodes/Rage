@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clean, emptySave, recordClear, formatTime } from '../public/js/save.js';
-import { LEVELS } from '../public/js/levels.js';
+import { clean, emptySave, recordClear, formatTime, multiplayerUnlocked } from '../public/js/save.js';
+import { LEVELS, MULTIPLAYER_START } from '../public/js/levels.js';
 
 test('garbage saves fall back to an empty save', () => {
   for (const raw of [null, 42, 'x', [], { unlocked: 'all' }]) {
@@ -41,4 +41,21 @@ test('clearing stages unlocks the next and keeps bests', () => {
   recordClear(s, LEVELS.length - 1, 0, 60);
   assert.equal(s.unlocked, LEVELS.length - 1);
   assert.equal(formatTime(60 * 75), '1:15');
+});
+
+test('multiplayer stays locked until world 2 is unlocked', () => {
+  const s = emptySave();
+  assert.equal(multiplayerUnlocked(s), false);
+  recordClear(s, MULTIPLAYER_START - 1, 3, 600); // beat the world 1 boss
+  assert.equal(multiplayerUnlocked(s), true);
+});
+
+test('local 2P runs inside world 1 are dropped', () => {
+  assert.equal(clean({ unlocked: 9, run: { mode: 'local', level: 2 } }).run, null);
+  assert.equal(clean({ unlocked: 9, run: { mode: 'solo', level: 2 } }).run.level, 2);
+});
+
+test('old saves that beat the grudge get world 2', () => {
+  assert.equal(clean({ unlocked: MULTIPLAYER_START - 1, wins: 1 }).unlocked, MULTIPLAYER_START);
+  assert.equal(clean({ unlocked: 3 }).unlocked, 3);
 });

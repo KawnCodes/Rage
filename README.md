@@ -1,6 +1,6 @@
 # RAGE
 
-A pixel-art rage platformer for the browser. It has five troll stages and a final boss, **The Grudge**. You can play solo, local 2-player, or online 2-player through a lobby.
+A pixel-art rage platformer for the browser with two worlds, each ending in a boss. World 1 is solo. Beating its boss unlocks World 2, where you can play solo, local 2-player or online 2-player through a lobby.
 
 Everything is built with plain HTML5 canvas, CSS and JavaScript. It has **zero dependencies** and no external assets: all the pixel art, the font and the sound effects are generated in code.
 
@@ -33,17 +33,28 @@ Requires Node 18 or newer. The `public/` folder also works on any static host (G
 
 Saves stay in your browser (`localStorage`) and never leave your machine. A save is checked and cleaned up when it loads, so a corrupted or hand-edited save can't break the game. Online games don't save a run, but clearing stages as host still unlocks them.
 
-### Stages
+### World 1: The Pit (solo)
 1. **Welcome**: "this one is easy :)" (it is not)
 2. **Shy Door**: hidden blocks and a door that runs away from you
 3. **Crumble**: platforms that crumble under you, plus a saw
 4. **Boing**: springs. Don't hold jump on the second one.
 5. **Trust Issues**: the exit is right there :)
-6. **The Grudge**: dodge its shots and slam. Stomp it while it's dizzy, 4 times.
+6. **Boss, The Grudge**: dodge its shots and slam. Stomp it while it's dizzy, 4 times.
+
+### World 2: The Machine (unlocks after The Grudge, solo or 2 player)
+1. **Conveyor**: belts push you around, plus a ceiling laser
+2. **Blink**: orange and cyan blocks take turns existing. Jump while both are showing.
+3. **Laser Tag**: timed laser beams. A flicker means one is about to fire.
+4. **Gauntlet**: everything at once :)
+5. **Boss, The Overclock**: faster, 6 hits, and its slam brings shards down from the ceiling. The floor belts push you toward it.
+
+The 2-player modes (local and online) are locked until World 2 is unlocked, and multiplayer games only use World 2 stages.
 
 Traps reset when everyone is dead. In co-op, one player can scout while the other survives.
 
 ## Two players
+
+Both modes unlock once you beat World 1, and multiplayer games are played in World 2.
 
 - **Local:** one keyboard with two key sets, or controllers. Controller 1 plays P1 and controller 2 plays P2. With only one controller, it plays P2 and the keyboard plays P1.
 - **Bluetooth:** pair a Bluetooth gamepad with your computer or phone and it works right away through the Gamepad API.

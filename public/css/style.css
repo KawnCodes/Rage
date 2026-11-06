@@ -193,3 +193,6 @@ button.danger:hover, button.danger:focus-visible { background: var(--red); }
 .level-card.locked { background: #120a1a; color: #5a4a6a; border-color: #2a1c3a; }
 .level-card.locked .num, .level-card.locked .best { color: #5a4a6a; }
 .level-card.boss .num { color: var(--red); }
+
+.world-head { grid-column: 1 / -1; margin: 6px 0 0; font-size: 13px; color: var(--yel); letter-spacing: 2px; border-bottom: 2px solid var(--edge); padding-bottom: 4px; }
+button.locked-btn { color: #7a6a8a; background: #160e20; border-color: #2a1c3a; }

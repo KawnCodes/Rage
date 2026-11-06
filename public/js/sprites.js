@@ -15,6 +15,12 @@ const THEMES = [
   { bg: ['#0a160c', '#102214', '#1c3a22'], g: ['#16301a', '#25502a', '#3a7a3a', '#6ab45a'] },
   { bg: ['#0a0c1c', '#10142a', '#1c2446'], g: ['#1a2040', '#2a3466', '#3e4e94', '#6a7ec8'] },
   { bg: ['#1c0608', '#2a0a0e', '#46141a'], g: ['#3a0e14', '#621a22', '#8e2a30', '#c84a4a'] },
+  // World 2: THE MACHINE (steel, rust and hazard orange)
+  { bg: ['#0c0e12', '#14181e', '#222a34'], g: ['#1e242c', '#353f4c', '#566476', '#8a9aae'] },
+  { bg: ['#120e0a', '#1c1610', '#2e2418'], g: ['#2a2018', '#4a3a28', '#6e5a3e', '#a88a5e'] },
+  { bg: ['#140a0c', '#1e1014', '#30181e'], g: ['#2a1a20', '#463038', '#6a4a54', '#9a7480'] },
+  { bg: ['#0a1012', '#10181c', '#1a2a30'], g: ['#18262c', '#2a4048', '#3e5e6a', '#6a94a2'] },
+  { bg: ['#0a0a14', '#12121e', '#1e1e34'], g: ['#1a1a2c', '#2c2c4a', '#44446e', '#7070a8'] },
 ];
 export const theme = (i) => THEMES[i % THEMES.length];
 
@@ -271,6 +277,12 @@ export function drawEntity(ctx, e, frame, levelIndex) {
     case 'rdoor':
       ctx.drawImage(E.door, x, y - 4);
       return;
+    case 'toggle':
+      drawToggle(ctx, e, frame);
+      return;
+    case 'laser':
+      drawLaser(ctx, e, frame);
+      return;
     case 'fdoor':
       ctx.drawImage(E.door, x, y - 4);
       if (e.s === 1) {
@@ -283,14 +295,67 @@ export function drawEntity(ctx, e, frame, levelIndex) {
   }
 }
 
+// ---- World 2 tiles ----
+export function drawConveyor(ctx, tx, ty, dir, frame) {
+  const px = tx * TILE, py = ty * TILE;
+  ctx.fillStyle = '#2a2e36'; ctx.fillRect(px, py, 8, 8);
+  ctx.fillStyle = '#4a505c'; ctx.fillRect(px, py, 8, 2);
+  ctx.fillStyle = '#16181e'; ctx.fillRect(px, py + 7, 8, 1);
+  // moving chevrons on the belt surface
+  const off = ((frame >> 2) * dir) & 7;
+  ctx.fillStyle = PAL.yel;
+  for (let i = -8; i < 16; i += 4) {
+    const x = px + ((i + off) & 7);
+    ctx.fillRect(x, py, 1, 1);
+    ctx.fillRect(x + (dir > 0 ? 1 : -1), py + 1, 1, 1);
+  }
+  ctx.fillStyle = '#6a7080';
+  ctx.fillRect(px + 2, py + 4, 1, 1); ctx.fillRect(px + 5, py + 4, 1, 1);
+}
+
+function drawToggle(ctx, e, frame) {
+  const x = Math.round(e.x), y = Math.round(e.y);
+  const col = e.g === 0 ? [PAL.org, '#ffb070', '#8a4410'] : [PAL.cyan, '#a8e8ff', '#1a5a78'];
+  if (e.s === 2 || (e.s === 1 && frame % 8 < 4)) {
+    ctx.fillStyle = col[2];
+    for (let i = 0; i < 8; i += 2) { ctx.fillRect(x + i, y, 1, 1); ctx.fillRect(x + i + 1, y + 7, 1, 1); ctx.fillRect(x, y + i + 1, 1, 1); ctx.fillRect(x + 7, y + i, 1, 1); }
+    return;
+  }
+  ctx.fillStyle = col[2]; ctx.fillRect(x, y, 8, 8);
+  ctx.fillStyle = col[0]; ctx.fillRect(x + 1, y + 1, 6, 6);
+  ctx.fillStyle = col[1]; ctx.fillRect(x + 1, y + 1, 6, 1);
+  ctx.fillStyle = col[2];
+  if (e.g === 0) { ctx.fillRect(x + 3, y + 3, 2, 2); } else { ctx.fillRect(x + 2, y + 4, 4, 1); }
+}
+
+function drawLaser(ctx, e, frame) {
+  const x = Math.round(e.x), y = Math.round(e.y);
+  ctx.fillStyle = PAL.s0; ctx.fillRect(x, y, 8, 6);
+  ctx.fillStyle = PAL.s1; ctx.fillRect(x, y, 8, 1);
+  ctx.fillStyle = e.s === 0 ? '#5a1a20' : PAL.red; ctx.fillRect(x + 2, y + 5, 4, 3);
+  if (e.s === 1 && frame % 6 < 3) {
+    ctx.fillStyle = 'rgba(232,51,74,0.5)';
+    ctx.fillRect(x + 3, y + 8, 2, e.len);
+  } else if (e.s === 2) {
+    ctx.fillStyle = PAL.red; ctx.fillRect(x + 2, y + 8, 4, e.len);
+    ctx.fillStyle = frame % 4 < 2 ? '#ffd0d8' : PAL.W; ctx.fillRect(x + 3, y + 8, 2, e.len);
+    ctx.fillStyle = PAL.yel; ctx.fillRect(x + 1 + (frame % 3) * 2, y + 8 + e.len - 2, 2, 2);
+  }
+}
+
 // ---- Boss (24x24, procedural) ----
 let bossFrames = null;
-function makeBoss(variant) {
+const BOSS_COLORS = [
+  { body: '#8a2a9a', dark: '#5a1468', lite: '#c05ad0', eye: PAL.red }, // The Grudge
+  { body: '#3a6a8a', dark: '#1e3a52', lite: '#7ac0e0', eye: PAL.yel }, // The Overclock
+];
+function makeBoss(variant, kind) {
   const c = canvas(24, 24);
   const x = c.getContext('2d');
-  const body = variant === 'flash' ? '#ffffff' : variant === 'rage' ? '#c0283a' : '#8a2a9a';
-  const dark = variant === 'flash' ? '#d0d0e0' : variant === 'rage' ? '#7a1020' : '#5a1468';
-  const lite = variant === 'flash' ? '#ffffff' : variant === 'rage' ? '#ff6a6a' : '#c05ad0';
+  const C = BOSS_COLORS[kind];
+  const body = variant === 'flash' ? '#ffffff' : variant === 'rage' ? '#c0283a' : C.body;
+  const dark = variant === 'flash' ? '#d0d0e0' : variant === 'rage' ? '#7a1020' : C.dark;
+  const lite = variant === 'flash' ? '#ffffff' : variant === 'rage' ? '#ff6a6a' : C.lite;
   const inside = (i, j) => {
     const dx = (i + 0.5 - 12) / 11.5, dy = (j + 0.5 - 13.5) / 10.5;
     return dx * dx + dy * dy <= 1;
@@ -303,11 +368,17 @@ function makeBoss(variant) {
       x.fillRect(i, j, 1, 1);
     }
   }
-  // horns
-  x.fillStyle = PAL.K;
-  x.fillRect(3, 1, 2, 4); x.fillRect(19, 1, 2, 4);
-  x.fillStyle = '#e8e0c8';
-  x.fillRect(3, 0, 1, 3); x.fillRect(20, 0, 1, 3);
+  if (kind === 1) {
+    // antenna + bolts instead of horns
+    x.fillStyle = PAL.K; x.fillRect(11, 0, 2, 4);
+    x.fillStyle = PAL.yel; x.fillRect(11, 0, 2, 1);
+    x.fillStyle = PAL.s1; x.fillRect(1, 13, 2, 2); x.fillRect(21, 13, 2, 2);
+  } else {
+    x.fillStyle = PAL.K;
+    x.fillRect(3, 1, 2, 4); x.fillRect(19, 1, 2, 4);
+    x.fillStyle = '#e8e0c8';
+    x.fillRect(3, 0, 1, 3); x.fillRect(20, 0, 1, 3);
+  }
   if (variant === 'dizzy') {
     x.fillStyle = PAL.K;
     for (const ox of [6, 14]) {
@@ -317,7 +388,7 @@ function makeBoss(variant) {
     x.fillRect(8, 17, 2, 1); x.fillRect(10, 16, 2, 1); x.fillRect(12, 17, 2, 1); x.fillRect(14, 16, 2, 1);
   } else {
     x.fillStyle = PAL.W; x.fillRect(5, 9, 5, 3); x.fillRect(14, 9, 5, 3);
-    x.fillStyle = variant === 'rage' ? PAL.yel : PAL.red; x.fillRect(7, 10, 2, 2); x.fillRect(15, 10, 2, 2);
+    x.fillStyle = variant === 'rage' ? PAL.yel : C.eye; x.fillRect(7, 10, 2, 2); x.fillRect(15, 10, 2, 2);
     x.fillStyle = PAL.K;
     x.fillRect(4, 7, 2, 1); x.fillRect(6, 8, 3, 1); x.fillRect(18, 7, 2, 1); x.fillRect(15, 8, 3, 1);
     x.fillRect(6, 15, 12, 5);
@@ -326,13 +397,17 @@ function makeBoss(variant) {
   }
   return c;
 }
-function getBoss() {
-  if (!bossFrames) bossFrames = { normal: makeBoss('normal'), flash: makeBoss('flash'), rage: makeBoss('rage'), dizzy: makeBoss('dizzy') };
-  return bossFrames;
+function getBoss(kind) {
+  if (!bossFrames) bossFrames = [];
+  const k = kind === 1 ? 1 : 0;
+  if (!bossFrames[k]) {
+    bossFrames[k] = { normal: makeBoss('normal', k), flash: makeBoss('flash', k), rage: makeBoss('rage', k), dizzy: makeBoss('dizzy', k) };
+  }
+  return bossFrames[k];
 }
 
 export function drawBoss(ctx, b, frame) {
-  const B = getBoss();
+  const B = getBoss(b.kind);
   let img = B.normal, sx = 0;
   if (b.hurt > 0 && frame % 4 < 2) img = B.flash;
   else if (b.s === 2) { img = B.rage; sx = frame % 2 ? 1 : -1; }
@@ -354,7 +429,10 @@ export function drawBoss(ctx, b, frame) {
 
 export function drawBullet(ctx, b, frame) {
   const x = Math.round(b.x), y = Math.round(b.y);
-  if (b.kind === 1) {
+  if (b.kind === 2) {
+    ctx.fillStyle = PAL.s2; ctx.fillRect(x, y, 3, 3);
+    ctx.fillStyle = PAL.s1; ctx.fillRect(x + 1, y + 3, 1, 2);
+  } else if (b.kind === 1) {
     ctx.fillStyle = frame % 4 < 2 ? PAL.org : PAL.yel;
     ctx.fillRect(x, y + 2, 5, 4); ctx.fillRect(x + 1, y, 3, 2);
   } else {

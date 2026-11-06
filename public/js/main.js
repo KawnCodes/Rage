@@ -7,7 +7,7 @@ import { drawTextCentered } from './font.js';
 import { PeerLink, Signaling } from './net.js';
 import { PROTOCOL_VERSION, sanitizeName, encodeManual, decodeManual, ROOM_CODE_RE } from './protocol.js';
 import { renderLevelCanvas } from './sprites.js';
-import { LEVELS, BOSS_LEVEL } from './levels.js';
+import { LEVELS, WORLDS, MULTIPLAYER_START, isBossLevel, stageLabel as shortLabel } from './levels.js';
 import * as Save from './save.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -135,17 +135,17 @@ const actions = {
     if (r) startGame(r.mode, { startLevel: r.level, deaths: r.deaths, time: r.time });
   },
   'new-solo': () => newRun('solo'),
-  'new-local': () => newRun('local'),
+  'new-local': () => { if (requireMultiplayer()) newRun('local', MULTIPLAYER_START); },
   levels: () => { renderLevels(); show('menu-levels'); },
   'lvmode-solo': () => { lvMode = 'solo'; renderLevels(); },
-  'lvmode-local': () => { lvMode = 'local'; renderLevels(); },
+  'lvmode-local': () => { if (requireMultiplayer()) { lvMode = 'local'; renderLevels(); } },
   'reset-progress': () => {
     if (!window.confirm('Reset all progress, unlocks and best times?')) return;
     save = Save.wipe();
     renderLevels();
     toast('Progress reset');
   },
-  online: () => { show('menu-online'); checkServer(); },
+  online: () => { if (requireMultiplayer()) { show('menu-online'); checkServer(); } },
   controls: () => { show('menu-controls'); renderPads(); },
   mute: () => toggleMute(),
   home: () => goHome(),
@@ -205,13 +205,25 @@ function startGame(m, opts = {}) {
   mode = m;
   paused = false;
   const names = m === 'host' ? [myName(), partnerName] : m === 'guest' ? [partnerName, myName()] : ['P1', 'P2'];
+  if (m === 'host' || m === 'guest') opts = { ...opts, startLevel: MULTIPLAYER_START }; // online play is World 2 onwards
   world = new World({ mode: m, names, onEvent, ...opts });
   autosave();
   show(null);
 }
 
 function newRun(m, startLevel = 0) {
-  startGame(m, { startLevel: Math.min(startLevel, save.unlocked) });
+  let lv = Math.min(startLevel, save.unlocked);
+  if (m === 'local') {
+    if (!Save.multiplayerUnlocked(save)) return;
+    lv = Math.max(lv, MULTIPLAYER_START); // 2 player is World 2 onwards
+  }
+  startGame(m, { startLevel: lv });
+}
+
+function requireMultiplayer() {
+  if (Save.multiplayerUnlocked(save)) return true;
+  toast('2 player unlocks in World 2. Beat The Grudge first!', 3000);
+  return false;
 }
 
 const savesRuns = () => mode === 'solo' || mode === 'local';
@@ -253,7 +265,7 @@ function quitToMenu() {
 }
 
 // ---------- menus: main / pause / level select ----------
-function stageLabel(i) { return i >= BOSS_LEVEL ? 'Boss' : `Stage ${i + 1}`; }
+function stageLabel(i) { return isBossLevel(i) ? `World ${LEVELS[i].world + 1} boss` : `Stage ${shortLabel(i)}`; }
 
 function refreshMain() {
   const r = save.run;
@@ -263,6 +275,14 @@ function refreshMain() {
     const deaths = r.mode === 'local' ? r.deaths[0] + r.deaths[1] : r.deaths[0];
     btn.textContent = `Continue: ${stageLabel(r.level)} ${r.mode === 'local' ? '(2P) ' : ''}· ${deaths} deaths`;
   }
+  const mp = Save.multiplayerUnlocked(save);
+  for (const [sel, label] of [['[data-go="new-local"]', 'Local 2 player'], ['[data-go="online"]', 'Online lobby']]) {
+    const el = $(`#menu-main ${sel}`);
+    el.textContent = mp ? label : `🔒 ${label}`;
+    el.classList.toggle('locked-btn', !mp);
+    el.title = mp ? '' : 'Unlocks in World 2';
+  }
+  $('#mp-note').hidden = mp;
   const bits = [`Lifetime deaths: ${save.totalDeaths}`];
   if (save.wins) bits.push(`Wins: ${save.wins}`);
   $('#stats-line').textContent = bits.join(' · ');
@@ -281,21 +301,35 @@ function refreshPause() {
 }
 
 function renderLevels() {
+  const mp = Save.multiplayerUnlocked(save);
+  if (!mp) lvMode = 'solo';
   $('#lvmode-solo').setAttribute('aria-checked', String(lvMode === 'solo'));
   $('#lvmode-local').setAttribute('aria-checked', String(lvMode === 'local'));
+  $('#lvmode-local').textContent = mp ? 'Local 2P' : '🔒 Local 2P';
   const grid = $('#level-grid');
   grid.replaceChildren();
   LEVELS.forEach((L, i) => {
-    const locked = i > save.unlocked;
+    if (L.stage === 0) {
+      const w = WORLDS[L.world];
+      const h = document.createElement('h3');
+      h.className = 'world-head';
+      const worldLocked = w.start > save.unlocked;
+      h.textContent = `World ${L.world + 1}: ${w.name}` +
+        (worldLocked ? ` · locked (beat World ${L.world} boss)` : '') +
+        (!worldLocked && lvMode === 'local' && w.start < MULTIPLAYER_START ? ' · solo only' : '');
+      grid.append(h);
+    }
+    const soloOnly = lvMode === 'local' && i < MULTIPLAYER_START;
+    const locked = i > save.unlocked || soloOnly;
     const b = document.createElement('button');
-    b.className = `level-card${locked ? ' locked' : ''}${i >= BOSS_LEVEL ? ' boss' : ''}`;
+    b.className = `level-card${locked ? ' locked' : ''}${isBossLevel(i) ? ' boss' : ''}`;
     b.disabled = locked;
     const num = document.createElement('span');
     num.className = 'num';
-    num.textContent = locked ? `${stageLabel(i)} · locked` : stageLabel(i);
+    num.textContent = soloOnly && i <= save.unlocked ? `${stageLabel(i)} · solo only` : locked ? `${stageLabel(i)} · locked` : stageLabel(i);
     const name = document.createElement('span');
     name.className = 'name';
-    name.textContent = locked ? '???' : L.name;
+    name.textContent = i > save.unlocked ? '???' : L.name;
     const best = document.createElement('span');
     best.className = 'best';
     const bs = save.best[i];
@@ -310,7 +344,7 @@ function renderLevels() {
 let lastInfo = '';
 function updateToolbar() {
   if (!world || world.frame % 15 !== 0) return;
-  const parts = [`${stageLabel(world.levelIndex)}/${BOSS_LEVEL + 1}`, `Run ${Save.formatTime(world.time)}`];
+  const parts = [WORLDS[world.level.world].name, stageLabel(world.levelIndex), `Run ${Save.formatTime(world.time)}`];
   const b = save.best[world.levelIndex];
   if (b) parts.push(`Best ${b.deaths}☠ ${Save.formatTime(b.time)}`);
   if (mode === 'host' || mode === 'guest') parts.push(`with ${partnerName}`);
@@ -347,6 +381,16 @@ function onEvent(type, data) {
     Save.store(save);
   }
   if (type === 'level-loaded') autosave();
+  if (type === 'world-clear' && data) {
+    const firstUnlock = data.world === 0 && !save.best[MULTIPLAYER_START];
+    if (savesRuns()) {
+      save.run = { mode, level: data.next, deaths: world.players.map((p) => p.deaths).concat(0).slice(0, 2), time: world.time };
+      world.continueNext = mode === 'solo' || data.next >= MULTIPLAYER_START;
+    }
+    Save.store(save);
+    toast(firstUnlock ? `World ${data.world + 2} unlocked! 2 player modes unlocked!` : `World ${data.world + 2} unlocked!`, 4000);
+    if (mode === 'host' && link) link.send({ t: 'win' }, true);
+  }
   if (type === 'victory') {
     save.wins++;
     if (savesRuns()) save.run = null;
@@ -403,6 +447,7 @@ function onNet(m, isHost) {
     if (world) return; // already started
     partnerName = m.name;
     startGame(isHost ? 'host' : 'guest');
+    if (isHost) link.send({ t: 'lvl', lv: world.levelIndex }, true);
     toast(`Playing with ${partnerName}`);
     return;
   }
@@ -566,7 +611,10 @@ function step() {
     if (world.frame % 300 === 0 && savesRuns()) autosave();
     updateToolbar();
     if (world.won && (input.wasPressed('Enter') || input.wasPressed('TouchJump') || input.wasPressed('Space') || input.padPressed('jump'))) {
-      quitToMenu();
+      if (world.worldClear && world.continueNext && save.run) {
+        const r = save.run;
+        startGame(r.mode, { startLevel: r.level, deaths: r.deaths, time: r.time });
+      } else quitToMenu();
     } else if (!paused || online) {
       let inputs = inputsFor();
       if (paused) inputs = inputs.map((i) => (i ? NEUTRAL : i));

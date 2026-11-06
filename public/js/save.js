@@ -1,7 +1,7 @@
 // Autosave + progress, stored in localStorage. Everything read back is
 // treated as untrusted (it can be edited by hand or corrupted) and rebuilt
 // field by field with clamped values, so a bad save can never break the game.
-import { LEVELS } from './levels.js';
+import { LEVELS, MULTIPLAYER_START } from './levels.js';
 
 const KEY = 'rage-save-v1';
 const N = LEVELS.length;
@@ -33,8 +33,11 @@ export function clean(raw) {
       deaths: [int(d[0], 0, 1e9, 0), int(d[1], 0, 1e9, 0)],
       time: int(r.time, 0, 1e10, 0),
     };
-    s.unlocked = Math.max(s.unlocked, s.run.level);
+    // Multiplayer runs only exist from World 2 on.
+    if (s.run.mode === 'local' && s.run.level < MULTIPLAYER_START) s.run = null;
+    else s.unlocked = Math.max(s.unlocked, s.run.level);
   }
+
   if (Array.isArray(raw.best)) {
     for (let i = 0; i < N; i++) {
       const b = raw.best[i];
@@ -45,6 +48,8 @@ export function clean(raw) {
       }
     }
   }
+  // Saves from before World 2 existed: beating the boss means World 2 is open.
+  if (s.wins > 0 || s.best[MULTIPLAYER_START - 1]) s.unlocked = Math.max(s.unlocked, MULTIPLAYER_START);
   return s;
 }
 
@@ -75,6 +80,8 @@ export function recordClear(save, level, deaths, time) {
   if (!b) save.best[level] = { deaths, time };
   else save.best[level] = { deaths: Math.min(b.deaths, deaths), time: Math.min(b.time, time) };
 }
+
+export const multiplayerUnlocked = (save) => save.unlocked >= MULTIPLAYER_START;
 
 export function formatTime(frames) {
   const secs = Math.floor(frames / 60);

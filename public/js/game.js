@@ -6,7 +6,7 @@
 //   host  - online host: local player 0, remote player 1, authoritative
 //   guest - online guest: local player 1, remote player 0. Traps/boss state
 //           come from the host's snapshots; the guest only predicts motion.
-import { LEVELS, BOSS_LEVEL, TILE, COLS, ROWS, W, H } from './levels.js';
+import { LEVELS, WORLDS, isBossLevel, isLastWorld, stageLabel, TILE, COLS, ROWS, W, H } from './levels.js';
 import { drawText, drawTextCentered, textWidth } from './font.js';
 import * as S from './sprites.js';
 import { sfx } from './audio.js';
@@ -15,12 +15,14 @@ import { MAX_BULLETS } from './protocol.js';
 const GRAV = 0.22, MAX_FALL = 4.5, RUN = 1.5;
 const JUMP_V = -3.6, SPRING_V = -5.6, SPRING_HELD_V = -6.5, STOMP_V = -4.2;
 const COYOTE = 6, BUFFER = 7, RESPAWN = 45;
-const BOSS_HP = 4;
+const CONVEYOR_SPEED = 0.7;
+const TOGGLE_PERIOD = 240; // on/off blocks: A solid [0,140), B solid [120,260) -> 20-frame overlaps
+const LASER_PERIOD = 160; // off 80, warning 30, firing 50
 const TAUNTS = ['SKILL ISSUE', 'LOL', 'TRY AGAIN', 'SO CLOSE', 'BREATHE', 'RAGE QUIT?', 'OOPS', 'NOT LIKE THIS',
   'AGAIN?', 'WOW', 'CLASSIC', 'YOU GOT THIS (NO)', 'HAHA', 'UNLUCKY', 'TOTALLY FAIR'];
 
-const ENTITY_CHARS = { C: 'crumble', H: 'hspike', X: 'fblock', V: 'fspike', S: 'saw', Z: 'vsaw', J: 'spring', D: 'door', M: 'rdoor', Q: 'fdoor' };
-const isSolidTile = (c) => c === '#' || c === '=' || c === 'I';
+const ENTITY_CHARS = { C: 'crumble', H: 'hspike', X: 'fblock', V: 'fspike', S: 'saw', Z: 'vsaw', J: 'spring', D: 'door', M: 'rdoor', Q: 'fdoor', O: 'toggle', o: 'toggle', L: 'laser', l: 'laser' };
+const isSolidTile = (c) => c === '#' || c === '=' || c === 'I' || c === '{' || c === '}';
 const rect = (x, y, w, h) => ({ x, y, w, h });
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -95,6 +97,9 @@ export class World {
     }));
     if (!this.spawns[1]) this.spawns[1] = { x: this.spawns[0].x + 1, y: this.spawns[0].y };
     this.revealed = new Set();
+    this.worldClear = null;
+    this.conveyors = [];
+    this.grid.forEach((row, y) => row.forEach((c, x) => { if (c === '{' || c === '}') this.conveyors.push({ x, y, dir: c === '}' ? 1 : -1 }); }));
     this.levelCanvas = typeof document !== 'undefined' ? S.renderLevelCanvas(this.grid, n) : null;
     this.resetTraps();
     for (const p of this.players) {
@@ -123,9 +128,19 @@ export class World {
         const e = { id: id++, type, x: x * TILE, y: y * TILE, ox: x * TILE, oy: y * TILE, s: 0, k: 0, v: 0 };
         if (type === 'saw' || type === 'vsaw') e.v = 1;
         if (type === 'rdoor') { e.tx = target ? target.x : e.x; e.ty = target ? target.y : e.y; }
+        if (type === 'toggle') e.g = c === 'O' ? 0 : 1;
+        if (type === 'laser') {
+          e.off = c === 'L' ? 0 : LASER_PERIOD / 2;
+          let len = 0;
+          while (y + 1 + len < ROWS && !isSolidTile(rows[y + 1 + len][x])) len++;
+          e.len = len * TILE;
+        }
         ents.push(e);
       }
-      if (c === 'B') boss = { x: x * TILE, y: -30, s: 0, hp: BOSS_HP, k: 0, vy: 0, hurt: 0, cool: 60 };
+      if (c === 'B') {
+        const cfg = this.level.boss || { kind: 0, hp: 4 };
+        boss = { x: x * TILE, y: -30, s: 0, hp: cfg.hp, maxHp: cfg.hp, kind: cfg.kind, k: 0, vy: 0, hurt: 0, cool: 60 };
+      }
     }));
     return { ents, boss };
   }
@@ -136,6 +151,8 @@ export class World {
     this.boss = boss;
     this.bullets = [];
     this.resetPending = false;
+    this.clock = 0;
+    this.updateTimers(true);
   }
 
   spawnPlayer(p) {
@@ -155,6 +172,7 @@ export class World {
   entSolid(e) {
     if (e.type === 'crumble' && e.s < 2) return rect(e.ox, e.oy, 8, 8);
     if (e.type === 'fblock' && e.s === 3) return rect(e.x, e.y, 8, 8);
+    if (e.type === 'toggle' && e.s < 2) return rect(e.x, e.y, 8, 8);
     return null;
   }
 
@@ -263,6 +281,7 @@ export class World {
       if (--p.deadT <= 0) this.respawn(p);
       return;
     }
+    if (this.collides(p.x, p.y, p.w, p.h)) { this.kill(p); return; } // a block appeared on top of you
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     const target = dir * RUN;
     const acc = p.onGround ? 0.3 : 0.18;
@@ -296,6 +315,11 @@ export class World {
         e.k = 10;
         sfx('boing');
       }
+    }
+    if (p.onGround) {
+      const under = [this.tileAt(p.x + 1, p.y + p.h + 1), this.tileAt(p.x + p.w - 1, p.y + p.h + 1)];
+      const push = under.includes('}') ? CONVEYOR_SPEED : under.includes('{') ? -CONVEYOR_SPEED : 0;
+      if (push) this.moveX(p, push);
     }
     this.checkBossStomp(p);
 
@@ -374,7 +398,7 @@ export class World {
     const b = this.boss;
     if (b && (b.s === 0 || b.s === 1 || b.s === 2 || b.s === 3) && b.hurt <= 0 && overlap(r, rect(b.x + 3, b.y + 3, 18, 19))) return true;
     for (const bu of this.bullets) {
-      const hz = bu.kind === 1 ? rect(bu.x, bu.y, 5, 6) : rect(bu.x, bu.y, 3, 3);
+      const hz = bu.kind === 1 ? rect(bu.x, bu.y, 5, 6) : bu.kind === 2 ? rect(bu.x, bu.y, 3, 5) : rect(bu.x, bu.y, 3, 3);
       if (overlap(r, hz)) return true;
     }
     return false;
@@ -392,6 +416,7 @@ export class World {
       case 'saw':
       case 'vsaw': return rect(e.x + 1, e.y + 1, 6, 6);
       case 'fdoor': return rect(e.x + 1, e.y - 4, 6, 12);
+      case 'laser': return e.s === 2 ? rect(e.x + 2, e.y + 8, 4, e.len) : null;
       default: return null;
     }
   }
@@ -421,9 +446,14 @@ export class World {
       deaths: this.localDeaths() - this.levelStartDeaths,
       time: Math.max(1, this.time - this.levelStartTime),
     });
-    if (this.levelIndex >= BOSS_LEVEL) {
+    if (isBossLevel(this.levelIndex)) {
       this.won = true;
-      this.onEvent('victory');
+      const w = this.level.world;
+      if (isLastWorld(w)) this.onEvent('victory');
+      else {
+        this.worldClear = { world: w, next: WORLDS[w + 1].start };
+        this.onEvent('world-clear', this.worldClear);
+      }
     } else {
       this.startTransition(this.levelIndex + 1);
     }
@@ -457,7 +487,29 @@ export class World {
     return p.x + p.w > x && p.x < x + 8 && Math.abs(p.y + p.h - y) < 1.5;
   }
 
+  // On/off blocks and lasers run on a shared level clock so they stay in step.
+  updateTimers(force = false) {
+    if (!this.auth && !force) return;
+    const t = this.clock;
+    for (const e of this.entities) {
+      if (e.type === 'toggle') {
+        const m = t % TOGGLE_PERIOD;
+        const on = e.g === 0 ? m < 140 : (m >= 120 || m < 20);
+        const warn = e.g === 0 ? m >= 100 && m < 140 : (m >= 220 || m < 20);
+        e.s = on ? (warn ? 1 : 0) : 2;
+        e.k = m;
+      } else if (e.type === 'laser') {
+        const m = (t + e.off) % LASER_PERIOD;
+        const s = m < 80 ? 0 : m < 110 ? 1 : 2;
+        if (s === 2 && e.s !== 2) sfx('zap');
+        e.s = s;
+        e.k = m;
+      }
+    }
+  }
+
   updateEntities() {
+    if (this.auth) { this.clock++; this.updateTimers(); }
     const alive = this.alivePlayers();
     for (const e of this.entities) {
       switch (e.type) {
@@ -547,7 +599,9 @@ export class World {
     if (!b) return;
     if (b.hurt > 0) b.hurt--;
     if (!this.auth) return;
-    const phase = BOSS_HP - b.hp;
+    // 0..3, how angry it is. Scales with damage taken, whatever its max HP.
+    const phase = Math.min(3, Math.floor(((b.maxHp - b.hp) * 4) / b.maxHp));
+    const hard = b.kind === 1;
     const target = this.bossTarget();
     b.k++;
     switch (b.s) {
@@ -558,11 +612,11 @@ export class World {
       case 1: { // hover + shoot
         if (target) {
           const tx = clamp(target.x + 3 - 12, 66, 230);
-          const sp = 0.8 + phase * 0.35;
+          const sp = Math.min(1.3, 0.8 + phase * 0.2 + (hard ? 0.2 : 0)); // always slower than the player (1.5)
           b.x += clamp(tx - b.x, -sp, sp);
         }
         b.y = 32 + Math.sin(this.frame * 0.08) * 3;
-        if (--b.cool <= 0 && target) { this.bossShoot(b, target, phase); b.cool = 80 - phase * 15; }
+        if (--b.cool <= 0 && target) { this.bossShoot(b, target, phase); b.cool = 80 - phase * 15 - (hard ? 12 : 0); }
         if (b.k > 170 - phase * 20) { b.s = 2; b.k = 0; }
         break;
       }
@@ -577,14 +631,23 @@ export class World {
           this.shake = 12;
           sfx('slam');
           this.dust(b.x + 4, 160); this.dust(b.x + 20, 160);
-          if (phase >= 1) {
+          if (phase >= 1 || hard) {
             this.addBullet(b.x - 5, 154, -1.6, 0, 1);
             this.addBullet(b.x + 24, 154, 1.6, 0, 1);
+          }
+          if (hard) {
+            // ceiling shards rain down, roughly where the players are
+            const alive = this.alivePlayers();
+            for (let i = 0; i < 2 + phase; i++) {
+              const p = alive[i % Math.max(1, alive.length)];
+              const x = clamp((p ? p.x : 160) + (Math.random() - 0.5) * 120, 12, W - 16);
+              this.addBullet(x, 10 - i * 18, 0, 1.6, 2);
+            }
           }
         }
         break;
       case 4: // stunned: stomp it!
-        if (b.k >= 150 - phase * 15) { b.s = 5; b.k = 0; }
+        if (b.k >= 150 - phase * 15 - (hard ? 15 : 0)) { b.s = 5; b.k = 0; }
         break;
       case 5: // rise
         b.y -= 1.5;
@@ -619,7 +682,7 @@ export class World {
     this.bullets = this.bullets.filter((bu) => {
       bu.x += bu.vx; bu.y += bu.vy;
       if (bu.x < -8 || bu.x > W + 8 || bu.y < -8 || bu.y > H + 8) return false;
-      if (bu.kind === 0 && this.tileSolidAt(bu.x + 1, bu.y + 1)) return false;
+      if ((bu.kind === 0 || bu.kind === 2) && this.tileSolidAt(bu.x + 1, bu.y + (bu.kind === 2 ? 5 : 1))) return false;
       if (bu.kind === 1 && (this.tileSolidAt(bu.x + (bu.vx > 0 ? 5 : 0), bu.y + 3))) return false;
       return true;
     });
@@ -704,6 +767,7 @@ export class World {
     });
     if (this.boss && m.b) {
       const b = this.boss;
+      if (m.b[3] > b.maxHp) return;
       if (m.b[3] < b.hp) { b.hurt = 30; sfx('hit'); this.burst(m.b[0] + 12, m.b[1] + 2, '#f5c542', 14); }
       if (m.b[2] === 4 && b.s !== 4) { this.shake = 12; sfx('slam'); }
       b.x = m.b[0]; b.y = m.b[1]; b.s = m.b[2]; b.hp = m.b[3]; b.k = m.b[4];
@@ -741,6 +805,7 @@ export class World {
     ctx.save();
     if (this.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * this.shake * 0.6), Math.round((Math.random() - 0.5) * this.shake * 0.6));
     ctx.drawImage(this.levelCanvas, 0, 0);
+    for (const c of this.conveyors) S.drawConveyor(ctx, c.x, c.y, c.dir, this.frame);
 
     for (const key of this.revealed) S.drawRevealed(ctx, key % COLS, Math.floor(key / COLS), this.levelIndex);
 
@@ -760,7 +825,7 @@ export class World {
         S.drawEntity(ctx, { type: 'door', x: W / 2 - 4, y: 20 * TILE - 8 }, this.frame, this.levelIndex);
         drawTextCentered(ctx, 'FREEDOM', W / 2, 20 * TILE - 22, '#5fd068');
       }
-      if (b.s === 4 && b.hp === BOSS_HP) drawTextCentered(ctx, 'STOMP!', b.x + 12, b.y - 12, '#f5c542');
+      if (b.s === 4 && b.hp === b.maxHp && b.kind === 0) drawTextCentered(ctx, 'STOMP!', b.x + 12, b.y - 12, '#f5c542');
     }
     for (const bu of this.bullets) S.drawBullet(ctx, bu, this.frame);
 
@@ -786,8 +851,7 @@ export class World {
   }
 
   renderHud(ctx) {
-    const stage = this.levelIndex >= BOSS_LEVEL ? 'BOSS' : `STAGE ${this.levelIndex + 1}`;
-    drawText(ctx, `${stage}: ${this.level.name}`, 3, 2, '#c8c0d8');
+    drawText(ctx, `${stageLabel(this.levelIndex)}: ${this.level.name}`, 3, 2, '#c8c0d8');
     const deaths = this.players.length === 1
       ? `DEATHS ${this.players[0].deaths}`
       : this.players.map((p) => `P${p.idx + 1} ${p.present ? p.deaths : '-'}`).join('  ');
@@ -797,14 +861,17 @@ export class World {
     if (b && b.s >= 1 && b.s < 7) {
       const bw = 60, bx = W / 2 - bw / 2;
       ctx.fillStyle = '#0a0610'; ctx.fillRect(bx - 1, 9, bw + 2, 5);
-      for (let i = 0; i < BOSS_HP; i++) {
-        ctx.fillStyle = i < b.hp ? '#c05ad0' : '#2a1c3a';
-        ctx.fillRect(bx + i * (bw / BOSS_HP), 10, bw / BOSS_HP - 1, 3);
+      const seg = bw / b.maxHp;
+      for (let i = 0; i < b.maxHp; i++) {
+        ctx.fillStyle = i < b.hp ? (b.kind === 1 ? '#4fc8e8' : '#c05ad0') : '#2a1c3a';
+        ctx.fillRect(Math.round(bx + i * seg), 10, Math.round(seg) - 1, 3);
       }
     }
 
     if (this.banner > 0 && !this.trans) {
-      const t = this.levelIndex >= BOSS_LEVEL ? 'FINAL BOSS' : `STAGE ${this.levelIndex + 1}`;
+      const L = this.level;
+      const t = L.boss ? (isLastWorld(L.world) ? 'FINAL BOSS' : `WORLD ${L.world + 1} BOSS`)
+        : L.stage === 0 ? `WORLD ${L.world + 1}: ${WORLDS[L.world].name}` : `STAGE ${stageLabel(this.levelIndex)}`;
       drawTextCentered(ctx, t, W / 2, 60, '#f5c542', 2);
       drawTextCentered(ctx, this.level.name, W / 2, 76, '#ffffff', 3);
     }
@@ -823,14 +890,18 @@ export class World {
     if (this.won) {
       ctx.fillStyle = 'rgba(10,6,16,0.82)';
       ctx.fillRect(0, 0, W, H);
-      drawTextCentered(ctx, 'YOU BEAT THE GRUDGE', W / 2, 44, '#f5c542', 2);
+      drawTextCentered(ctx, `YOU BEAT ${this.level.name}`, W / 2, 30, '#f5c542', 2);
+      if (this.worldClear) {
+        drawTextCentered(ctx, `WORLD ${this.worldClear.world + 2} UNLOCKED: ${WORLDS[this.worldClear.world + 1].name}`, W / 2, 52, '#5fd068', 1);
+        if (this.worldClear.world === 0) drawTextCentered(ctx, '2 PLAYER MODES UNLOCKED', W / 2, 60, '#4fc8e8', 1);
+      }
       const secs = Math.floor(this.time / 60);
       drawTextCentered(ctx, `TIME ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`, W / 2, 74, '#ffffff', 2);
       this.players.forEach((p, i) => {
         drawTextCentered(ctx, `${p.name}: ${p.deaths} DEATHS`, W / 2, 96 + i * 14, S.playerColor(p.idx), 2);
       });
-      drawTextCentered(ctx, 'WORTH IT?', W / 2, 132, '#c8c0d8', 1);
-      drawTextCentered(ctx, 'PRESS ENTER', W / 2, 150, '#5fd068', 1);
+      drawTextCentered(ctx, this.worldClear ? 'IT GETS WORSE.' : 'WORTH IT?', W / 2, 132, '#c8c0d8', 1);
+      drawTextCentered(ctx, this.worldClear && this.continueNext ? `PRESS ENTER FOR WORLD ${this.worldClear.world + 2}` : 'PRESS ENTER', W / 2, 150, '#5fd068', 1);
     }
   }
 }
