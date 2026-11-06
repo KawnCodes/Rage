@@ -267,6 +267,7 @@ export class World {
     this.frame++;
     if (this.shake > 0) this.shake--;
     if (this.taunt && --this.taunt.t <= 0) this.taunt = null;
+    if (this.cheer > 0) this.cheer--;
     if (this.banner > 0) this.banner--;
     this.updateParticles();
 
@@ -477,6 +478,7 @@ export class World {
     });
     if (isBossLevel(this.levelIndex)) {
       this.won = true;
+      this.cheer = 70;
       const w = this.level.world;
       if (isLastWorld(w)) this.onEvent('victory');
       else {
@@ -491,9 +493,10 @@ export class World {
   startTransition(next) {
     if (!LEVELS[next] || this.trans) return;
     this.trans = { t: 0, next };
+    this.cheer = 70; // HUZZAR!!
   }
 
-  showVictory() { this.won = true; this.levelDone = true; sfx('win'); }
+  showVictory() { this.won = true; this.levelDone = true; this.cheer = 70; sfx('win'); }
 
   // Host-side validation of a remote player's claims.
   tryRemoteDoor(idx) {
@@ -941,7 +944,7 @@ export class World {
       }
     }
 
-    if (this.banner > 0 && !this.trans) {
+    if (this.banner > 0 && !this.trans && !(this.cheer > 0)) {
       const L = this.level;
       const t = L.boss ? (isLastWorld(L.world) ? 'FINAL BOSS' : `WORLD ${L.world + 1} BOSS`)
         : L.stage === 0 ? `WORLD ${L.world + 1}: ${WORLDS[L.world].name}` : `STAGE ${stageLabel(this.levelIndex)}`;
@@ -960,9 +963,15 @@ export class World {
       ctx.fillRect(0, 0, W, H);
     }
 
+    if (this.cheer > 0 && !this.won) {
+      const bounce = Math.round(Math.abs(Math.sin(this.cheer * 0.25)) * 6);
+      drawTextCentered(ctx, 'HUZZAR!!', W / 2, 64 - bounce, this.frame % 8 < 4 ? '#f5c542' : '#5fd068', 5);
+    }
+
     if (this.won) {
       ctx.fillStyle = 'rgba(10,6,16,0.82)';
       ctx.fillRect(0, 0, W, H);
+      drawTextCentered(ctx, 'HUZZAR!!', W / 2, 8, this.frame % 16 < 8 ? '#f5c542' : '#5fd068', 3);
       drawTextCentered(ctx, `YOU BEAT ${this.level.name}`, W / 2, 30, '#f5c542', 2);
       if (this.worldClear) {
         drawTextCentered(ctx, `WORLD ${this.worldClear.world + 2} UNLOCKED: ${WORLDS[this.worldClear.world + 1].name}`, W / 2, 52, '#5fd068', 1);
