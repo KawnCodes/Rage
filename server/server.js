@@ -13,10 +13,15 @@
 //    expire; global caps on rooms, queues and waiting connections.
 //  - Cross-origin writes are refused (Origin check + JSON content type) and no
 //    CORS headers are sent.
+//  - Host header allowlist (localhost, IP addresses, *.local, plus ALLOWED_HOSTS)
+//    so other websites can't reach this server through DNS rebinding when it's
+//    open to your local network.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { validateSignal, ROOM_CODE_RE, ROOM_CODE_ALPHABET, MAX_SIGNAL_BYTES } from '../public/js/protocol.js';
 
@@ -72,12 +77,14 @@ function loadStatic(dir) {
   return files;
 }
 
-function baseHeaders(res, opts) {
+function baseHeaders(res, opts, req) {
   res.setHeader('Content-Security-Policy', CSP);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  // Browsers only honour COOP on secure origins (HTTPS or localhost); elsewhere it just logs a warning.
+  const h = String(req.headers.host || '').toLowerCase();
+  if (opts.hsts || /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(h)) res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
   if (opts.hsts) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
@@ -120,8 +127,32 @@ class Bucket {
   }
 }
 
+// This machine's addresses on the local network (Wi-Fi / Ethernet), private ranges first.
+export function lanAddresses() {
+  const isPrivate = (ip) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip);
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const a of list || []) {
+      if ((a.family === 'IPv4' || a.family === 4) && !a.internal) out.push(a.address);
+    }
+  }
+  return out.sort((a, b) => Number(isPrivate(b)) - Number(isPrivate(a)));
+}
+
+function hostAllowed(hostHeader, extra) {
+  if (typeof hostHeader !== 'string' || hostHeader.length > 255) return false;
+  let host = hostHeader.trim().toLowerCase();
+  if (host.startsWith('[')) host = host.slice(1, host.indexOf(']')); // [ipv6]:port
+  else host = host.replace(/:\d+$/, '');
+  if (!host) return false;
+  return host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') ||
+    net.isIP(host) !== 0 || extra.includes(host);
+}
+
 export function createServer(opts = {}) {
-  const options = { trustProxy: false, hsts: false, publicDir: PUBLIC_DIR, ...opts };
+  const options = { trustProxy: false, hsts: false, publicDir: PUBLIC_DIR, allowedHosts: [], ...opts };
+  const allowedHosts = options.allowedHosts.map((h) => String(h).trim().toLowerCase()).filter(Boolean);
+  let lanUrls = [];
   const files = loadStatic(options.publicDir);
   const rooms = new Map();
   let waiters = 0;
@@ -219,6 +250,8 @@ export function createServer(opts = {}) {
 
     const parts = url.pathname.split('/').filter(Boolean); // ['api', ...]
     if (parts.length === 2 && parts[1] === 'health' && req.method === 'GET') return sendJson(res, 200, { ok: true });
+    // Addresses other devices on the same network can open (empty when local-only).
+    if (parts.length === 2 && parts[1] === 'lan' && req.method === 'GET') return sendJson(res, 200, { urls: lanUrls });
 
     if (parts[1] !== 'rooms') return sendJson(res, 404, { error: 'not found' });
 
@@ -328,7 +361,11 @@ export function createServer(opts = {}) {
   }
 
   const server = http.createServer((req, res) => {
-    baseHeaders(res, options);
+    baseHeaders(res, options, req);
+    if (!hostAllowed(req.headers.host, allowedHosts)) {
+      res.writeHead(421, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end('Unknown host. Add it to ALLOWED_HOSTS if you serve RAGE under a domain name.');
+    }
     let url;
     try {
       if (typeof req.url !== 'string' || req.url.length > 2048) throw new Error();
@@ -357,6 +394,11 @@ export function createServer(opts = {}) {
     for (const b of Object.values(limits)) b.sweep(now);
   }, 30000);
   sweeper.unref();
+  server.on('listening', () => {
+    const a = server.address();
+    const wildcard = a && (a.address === '0.0.0.0' || a.address === '::');
+    lanUrls = wildcard ? lanAddresses().map((ip) => `http://${ip}:${a.port}`) : [];
+  });
   server.on('close', () => {
     clearInterval(sweeper);
     for (const code of [...rooms.keys()]) deleteRoom(code);
@@ -368,10 +410,33 @@ export function createServer(opts = {}) {
 // Run directly: `node server/server.js`
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT) || 8080;
-  const host = process.env.HOST || '127.0.0.1';
-  const server = createServer({ trustProxy: process.env.TRUST_PROXY === '1', hsts: process.env.HSTS === '1' });
+  // Default: reachable from other devices on your local network. HOST=127.0.0.1 for this machine only.
+  const host = process.argv.includes('--local') ? '127.0.0.1' : process.env.HOST || '0.0.0.0';
+  const server = createServer({
+    trustProxy: process.env.TRUST_PROXY === '1',
+    hsts: process.env.HSTS === '1',
+    allowedHosts: (process.env.ALLOWED_HOSTS || '').split(','),
+  });
+  server.on('error', (e) => {
+    console.error(e.code === 'EADDRINUSE' ? `Port ${port} is already in use. Try: PORT=8081 npm start` : `Could not start: ${e.message}`);
+    process.exit(1);
+  });
   server.listen(port, host, () => {
-    console.log(`RAGE running at http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
-    if (host === '127.0.0.1') console.log('Only reachable from this machine. Use HOST=0.0.0.0 to allow your LAN.');
+    console.log('');
+    console.log('  RAGE is running!');
+    console.log(`  On this computer:   http://localhost:${port}`);
+    if (host === '0.0.0.0' || host === '::') {
+      const ips = lanAddresses();
+      if (ips.length) {
+        console.log('  On your Wi-Fi/LAN:  ' + ips.map((ip) => `http://${ip}:${port}`).join('\n                      '));
+        console.log('  (open that address on your phone, tablet or a friend\'s computer on the same network)');
+      } else {
+        console.log('  No network connection found, so other devices can\'t reach it right now.');
+      }
+    } else {
+      console.log('  Only this computer can connect (local-only mode). Run `npm start` (without :local) to allow your network.');
+    }
+    console.log('  Press Ctrl+C to stop.');
+    console.log('');
   });
 }

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS, WORLDS, COLS, ROWS, MULTIPLAYER_START, isBossLevel, stageLabel } from '../public/js/levels.js';
+import { LEVELS, WORLDS, COLS, ROWS, MULTIPLAYER_START, COOP_START, isBossLevel, isCoopLevel, stageLabel } from '../public/js/levels.js';
 
-const LEGAL = new Set([...' #=^v<>FIPpDMNQCHXVSZJB{}OoLl']);
+const LEGAL = new Set([...' #=^v<>FIPpDMNQCHXVSZJB{}OoLlKkGg']);
 
 test('levels are well formed', () => {
   assert.ok(LEVELS.length >= 5);
@@ -25,7 +25,7 @@ test('levels are well formed', () => {
 });
 
 test('worlds: each ends in a boss, multiplayer starts at world 2', () => {
-  assert.equal(WORLDS.length, 2);
+  assert.equal(WORLDS.length, 3);
   for (const w of WORLDS) {
     assert.ok(isBossLevel(w.end), 'world ends with a boss');
     for (let i = w.start; i < w.end; i++) assert.ok(!isBossLevel(i));
@@ -34,4 +34,17 @@ test('worlds: each ends in a boss, multiplayer starts at world 2', () => {
   assert.equal(stageLabel(0), '1-1');
   assert.equal(stageLabel(WORLDS[0].end), '1-BOSS');
   assert.equal(stageLabel(WORLDS[1].start), '2-1');
+});
+
+test('world 3 is co-op: every stage has both spawns and its plates/gates match up', () => {
+  assert.equal(COOP_START, WORLDS[2].start);
+  assert.ok(WORLDS[2].coop && !WORLDS[0].coop && !WORLDS[1].coop);
+  for (let i = COOP_START; i < LEVELS.length; i++) {
+    assert.ok(isCoopLevel(i));
+    const all = LEVELS[i].rows.join('');
+    assert.ok(all.includes('P') && all.includes('p'), 'both spawns');
+    if (all.includes('G')) assert.ok(all.includes('K'), 'gate G has a plate K');
+    if (all.includes('g')) assert.ok(all.includes('k'), 'gate g has a plate k');
+  }
+  for (let i = 0; i < COOP_START; i++) assert.ok(!isCoopLevel(i));
 });

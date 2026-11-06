@@ -1,7 +1,7 @@
 // Autosave + progress, stored in localStorage. Everything read back is
 // treated as untrusted (it can be edited by hand or corrupted) and rebuilt
 // field by field with clamped values, so a bad save can never break the game.
-import { LEVELS, MULTIPLAYER_START } from './levels.js';
+import { LEVELS, MULTIPLAYER_START, isCoopLevel } from './levels.js';
 
 const KEY = 'rage-save-v1';
 const N = LEVELS.length;
@@ -35,6 +35,8 @@ export function clean(raw) {
     };
     // Multiplayer runs only exist from World 2 on.
     if (s.run.mode === 'local' && s.run.level < MULTIPLAYER_START) s.run = null;
+    // Co-op worlds can't be played solo.
+    else if (s.run.mode === 'solo' && isCoopLevel(s.run.level)) { s.unlocked = Math.max(s.unlocked, s.run.level); s.run = null; }
     else s.unlocked = Math.max(s.unlocked, s.run.level);
   }
 

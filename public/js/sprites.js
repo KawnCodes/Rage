@@ -21,6 +21,11 @@ const THEMES = [
   { bg: ['#140a0c', '#1e1014', '#30181e'], g: ['#2a1a20', '#463038', '#6a4a54', '#9a7480'] },
   { bg: ['#0a1012', '#10181c', '#1a2a30'], g: ['#18262c', '#2a4048', '#3e5e6a', '#6a94a2'] },
   { bg: ['#0a0a14', '#12121e', '#1e1e34'], g: ['#1a1a2c', '#2c2c4a', '#44446e', '#7070a8'] },
+  // World 3: THE BOND (warm stone and moss)
+  { bg: ['#0e120a', '#161c10', '#24301a'], g: ['#262a1a', '#40482a', '#5e6a3e', '#94a464'] },
+  { bg: ['#120e14', '#1c1620', '#2e2434'], g: ['#2a2230', '#46384e', '#6a5874', '#a08aa8'] },
+  { bg: ['#10100a', '#1a1a10', '#2c2c1a'], g: ['#2a2818', '#48442a', '#6e683e', '#a8a064'] },
+  { bg: ['#140c08', '#20140c', '#342214'], g: ['#2e1e12', '#4e341e', '#76502c', '#b07c48'] },
 ];
 export const theme = (i) => THEMES[i % THEMES.length];
 
@@ -283,6 +288,12 @@ export function drawEntity(ctx, e, frame, levelIndex) {
     case 'laser':
       drawLaser(ctx, e, frame);
       return;
+    case 'plate':
+      drawPlate(ctx, e, frame);
+      return;
+    case 'gate':
+      drawGate(ctx, e, frame);
+      return;
     case 'fdoor':
       ctx.drawImage(E.door, x, y - 4);
       if (e.s === 1) {
@@ -328,6 +339,41 @@ function drawToggle(ctx, e, frame) {
   if (e.g === 0) { ctx.fillRect(x + 3, y + 3, 2, 2); } else { ctx.fillRect(x + 2, y + 4, 4, 1); }
 }
 
+const CH_COLORS = [['#5fd068', '#2a6a30', '#b0f0a0'], ['#e05ae0', '#6a206a', '#f8b0f8']];
+
+function drawPlate(ctx, e, frame) {
+  const x = Math.round(e.x), y = Math.round(e.y);
+  const c = CH_COLORS[e.ch || 0];
+  const h = e.s === 1 ? 1 : 2;
+  ctx.fillStyle = PAL.s0; ctx.fillRect(x, y + 7, 8, 1);
+  ctx.fillStyle = c[e.s === 1 ? 2 : 0]; ctx.fillRect(x + 1, y + 7 - h, 6, h);
+  if (e.s === 0 && frame % 40 < 20) { ctx.fillStyle = c[2]; ctx.fillRect(x + 3, y + 7 - h, 2, 1); }
+}
+
+function drawGate(ctx, e, frame) {
+  const x = Math.round(e.x), y = Math.round(e.y);
+  const c = CH_COLORS[e.ch || 0];
+  const closing = e.s === 1 && e.k < 20;
+  if (e.s === 1 && !(closing && frame % 6 < 3)) {
+    ctx.fillStyle = c[1];
+    ctx.fillRect(x, y, 1, 8); ctx.fillRect(x + 7, y, 1, 8);
+    return;
+  }
+  ctx.fillStyle = '#16121a'; ctx.fillRect(x, y, 8, 8);
+  ctx.fillStyle = c[0];
+  ctx.fillRect(x + 1, y, 1, 8); ctx.fillRect(x + 3, y, 2, 8); ctx.fillRect(x + 6, y, 1, 8);
+  ctx.fillStyle = c[1]; ctx.fillRect(x, y + 3, 8, 1);
+}
+
+export function drawShield(ctx, b, frame) {
+  const cx = b.x + 12, cy = b.y + 13, r = 16;
+  ctx.fillStyle = frame % 8 < 4 ? 'rgba(79,200,232,0.9)' : 'rgba(168,232,255,0.7)';
+  for (let a = 0; a < Math.PI * 2; a += 0.12) {
+    if (((a * 10 + frame * 0.2) | 0) % 3 === 0) continue;
+    ctx.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r * 0.9), 1, 1);
+  }
+}
+
 function drawLaser(ctx, e, frame) {
   const x = Math.round(e.x), y = Math.round(e.y);
   ctx.fillStyle = PAL.s0; ctx.fillRect(x, y, 8, 6);
@@ -348,6 +394,7 @@ let bossFrames = null;
 const BOSS_COLORS = [
   { body: '#8a2a9a', dark: '#5a1468', lite: '#c05ad0', eye: PAL.red }, // The Grudge
   { body: '#3a6a8a', dark: '#1e3a52', lite: '#7ac0e0', eye: PAL.yel }, // The Overclock
+  { body: '#4a7a3a', dark: '#2a4a1e', lite: '#8ac06a', eye: PAL.org }, // The Warden
 ];
 function makeBoss(variant, kind) {
   const c = canvas(24, 24);
@@ -368,7 +415,12 @@ function makeBoss(variant, kind) {
       x.fillRect(i, j, 1, 1);
     }
   }
-  if (kind === 1) {
+  if (kind === 2) {
+    // crown
+    x.fillStyle = PAL.yel;
+    x.fillRect(6, 1, 12, 2); x.fillRect(6, 0, 1, 1); x.fillRect(11, 0, 2, 1); x.fillRect(17, 0, 1, 1);
+    x.fillStyle = PAL.red; x.fillRect(11, 1, 2, 1);
+  } else if (kind === 1) {
     // antenna + bolts instead of horns
     x.fillStyle = PAL.K; x.fillRect(11, 0, 2, 4);
     x.fillStyle = PAL.yel; x.fillRect(11, 0, 2, 1);
@@ -399,7 +451,7 @@ function makeBoss(variant, kind) {
 }
 function getBoss(kind) {
   if (!bossFrames) bossFrames = [];
-  const k = kind === 1 ? 1 : 0;
+  const k = kind === 1 || kind === 2 ? kind : 0;
   if (!bossFrames[k]) {
     bossFrames[k] = { normal: makeBoss('normal', k), flash: makeBoss('flash', k), rage: makeBoss('rage', k), dizzy: makeBoss('dizzy', k) };
   }

@@ -15,6 +15,8 @@
 //   { }  conveyor belt moving left / right (solid)
 //   O o  on/off blocks, groups A / B (they take turns being solid)
 //   L l  ceiling laser, two timings (fires a beam straight down)
+//   K k  pressure plate, channel 1 / 2 (opens gates while someone stands on it)
+//   G g  gate, channel 1 / 2 (solid until a matching plate is held)
 
 export const TILE = 8;
 export const COLS = 40;
@@ -179,21 +181,78 @@ const WORLD2 = [
   }, { boss: { kind: 1, hp: 6 } }),
 ];
 
+// ---- World 3: THE BOND (co-op only: every stage needs two players) ----
+const WORLD3 = [
+  build('TEAMWORK', 'TWO HEADS ARE TALLER THAN ONE', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(4, 19, 'p');
+    // a slab too high to jump onto alone, with a gated tunnel underneath
+    L.rect(16, 16, 18, 2, '#');
+    L.rect(20, 18, 1, 2, 'G');
+    L.set(22, 15, 'K');
+    L.rect(27, 15, 2, 1, '^');
+    L.set(35, 19, 'H');
+    L.set(38, 19, 'D');
+  }),
+
+  build('TAG TEAM', 'YOU HOLD. I GO. THEN SWAP.', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(12, 1, 1, 12, '#'); L.rect(12, 13, 1, 7, 'G');
+    L.rect(26, 1, 1, 12, '#'); L.rect(26, 13, 1, 7, 'g');
+    L.set(6, 19, 'K'); L.set(15, 19, 'K');
+    L.set(19, 1, 'L');
+    L.set(21, 19, 'k'); L.set(33, 19, 'k');
+    L.rect(29, 20, 2, 1, '^');
+    L.set(35, 19, 'H');
+    L.set(37, 19, 'D');
+  }),
+
+  build('TRUST FALL', 'CATCH ME', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(8, 16, 6, 2, '#');
+    L.rect(11, 18, 1, 2, 'G');
+    L.set(12, 15, 'K');
+    L.set(17, 19, 'J');
+    L.rect(20, 12, 8, 1, '=');
+    L.set(26, 11, 'k');
+    L.set(23, 1, 'l');
+    L.rect(30, 1, 1, 12, '#'); L.rect(30, 13, 1, 7, 'g');
+    L.set(34, 19, 'k');
+    L.set(37, 19, 'D');
+  }),
+
+  build('THE WARDEN', 'HOLD A SWITCH TO DROP ITS SHIELD', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(6, 19, 'P'); L.set(33, 19, 'p');
+    L.set(2, 19, 'K'); L.set(37, 19, 'K');
+    L.rect(3, 15, 5, 1, '=');
+    L.rect(32, 15, 5, 1, '=');
+    L.set(19, 4, 'B');
+  }, { boss: { kind: 2, hp: 6, shield: true } }),
+];
+
 export const WORLDS = Object.freeze([
-  { name: 'THE PIT', levels: WORLD1 },
-  { name: 'THE MACHINE', levels: WORLD2 },
+  { name: 'THE PIT', levels: WORLD1, coop: false },
+  { name: 'THE MACHINE', levels: WORLD2, coop: false },
+  { name: 'THE BOND', levels: WORLD3, coop: true },
 ].map((w, wi, all) => {
   const start = all.slice(0, wi).reduce((n, x) => n + x.levels.length, 0);
-  return Object.freeze({ name: w.name, start, end: start + w.levels.length - 1 });
+  return Object.freeze({ name: w.name, start, end: start + w.levels.length - 1, coop: w.coop });
 }));
 
-export const LEVELS = Object.freeze([...WORLD1, ...WORLD2].map((L, i) => {
+export const LEVELS = Object.freeze([...WORLD1, ...WORLD2, ...WORLD3].map((L, i) => {
   const world = WORLDS.findIndex((w) => i >= w.start && i <= w.end);
-  return Object.freeze({ ...L, world, stage: i - WORLDS[world].start });
+  return Object.freeze({ ...L, world, stage: i - WORLDS[world].start, coop: WORLDS[world].coop });
 }));
 
 // Multiplayer (local 2P and online) is only available from World 2 onwards.
 export const MULTIPLAYER_START = WORLDS[1].start;
+
+// Co-op worlds can't be played solo.
+export const COOP_START = WORLDS.find((w) => w.coop).start;
+export const isCoopLevel = (i) => !!(LEVELS[i] && LEVELS[i].coop);
 
 export const isBossLevel = (i) => !!(LEVELS[i] && LEVELS[i].boss);
 export const isLastWorld = (w) => w >= WORLDS.length - 1;

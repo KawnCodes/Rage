@@ -18,10 +18,11 @@ const COYOTE = 6, BUFFER = 7, RESPAWN = 45;
 const CONVEYOR_SPEED = 0.7;
 const TOGGLE_PERIOD = 240; // on/off blocks: A solid [0,140), B solid [120,260) -> 20-frame overlaps
 const LASER_PERIOD = 160; // off 80, warning 30, firing 50
+const GATE_DELAY = 30; // frames a gate stays open after its plate is released
 const TAUNTS = ['SKILL ISSUE', 'LOL', 'TRY AGAIN', 'SO CLOSE', 'BREATHE', 'RAGE QUIT?', 'OOPS', 'NOT LIKE THIS',
   'AGAIN?', 'WOW', 'CLASSIC', 'YOU GOT THIS (NO)', 'HAHA', 'UNLUCKY', 'TOTALLY FAIR'];
 
-const ENTITY_CHARS = { C: 'crumble', H: 'hspike', X: 'fblock', V: 'fspike', S: 'saw', Z: 'vsaw', J: 'spring', D: 'door', M: 'rdoor', Q: 'fdoor', O: 'toggle', o: 'toggle', L: 'laser', l: 'laser' };
+const ENTITY_CHARS = { C: 'crumble', H: 'hspike', X: 'fblock', V: 'fspike', S: 'saw', Z: 'vsaw', J: 'spring', D: 'door', M: 'rdoor', Q: 'fdoor', O: 'toggle', o: 'toggle', L: 'laser', l: 'laser', K: 'plate', k: 'plate', G: 'gate', g: 'gate' };
 const isSolidTile = (c) => c === '#' || c === '=' || c === 'I' || c === '{' || c === '}';
 const rect = (x, y, w, h) => ({ x, y, w, h });
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -129,6 +130,7 @@ export class World {
         if (type === 'saw' || type === 'vsaw') e.v = 1;
         if (type === 'rdoor') { e.tx = target ? target.x : e.x; e.ty = target ? target.y : e.y; }
         if (type === 'toggle') e.g = c === 'O' ? 0 : 1;
+        if (type === 'plate' || type === 'gate') e.ch = c === 'K' || c === 'G' ? 0 : 1;
         if (type === 'laser') {
           e.off = c === 'L' ? 0 : LASER_PERIOD / 2;
           let len = 0;
@@ -139,7 +141,7 @@ export class World {
       }
       if (c === 'B') {
         const cfg = this.level.boss || { kind: 0, hp: 4 };
-        boss = { x: x * TILE, y: -30, s: 0, hp: cfg.hp, maxHp: cfg.hp, kind: cfg.kind, k: 0, vy: 0, hurt: 0, cool: 60 };
+        boss = { x: x * TILE, y: -30, s: 0, hp: cfg.hp, maxHp: cfg.hp, kind: cfg.kind, shield: !!cfg.shield, k: 0, vy: 0, hurt: 0, cool: 60 };
       }
     }));
     return { ents, boss };
@@ -173,6 +175,7 @@ export class World {
     if (e.type === 'crumble' && e.s < 2) return rect(e.ox, e.oy, 8, 8);
     if (e.type === 'fblock' && e.s === 3) return rect(e.x, e.y, 8, 8);
     if (e.type === 'toggle' && e.s < 2) return rect(e.x, e.y, 8, 8);
+    if (e.type === 'gate' && e.s === 0) return rect(e.x, e.y, 8, 8);
     return null;
   }
 
@@ -227,10 +230,23 @@ export class World {
     return false;
   }
 
+  // Players can stand on each other's heads (one-way, from above).
+  playerBelow(p, step) {
+    for (const o of this.players) {
+      if (o === p || !o.present || o.dead || (!this.isLocal(o) && !o.synced)) continue;
+      if (p.x + p.w > o.x + 1 && p.x < o.x + o.w - 1 && p.y + p.h <= o.y + 0.5 && p.y + p.h + step > o.y) return o;
+    }
+    return null;
+  }
+
   moveY(p, dy) {
     let rem = dy;
     while (rem !== 0) {
       const step = Math.abs(rem) > 1 ? Math.sign(rem) : rem;
+      if (step > 0 && p.idx !== undefined) {
+        const o = this.playerBelow(p, step);
+        if (o) { p.y = o.y - p.h; p.onGround = true; p.standOn = o; p.vy = 0; return true; }
+      }
       if (this.collides(p.x, p.y + step, p.w, p.h)) {
         const snap = step > 0 ? Math.floor((p.y + p.h + step) / TILE) * TILE - p.h : Math.ceil((p.y + step) / TILE) * TILE;
         if ((step > 0 ? snap > p.y : snap < p.y) && !this.collides(p.x, snap, p.w, p.h)) p.y = snap;
@@ -274,6 +290,15 @@ export class World {
     this.updateEntities();
     this.updateBoss();
     this.updateBullets();
+    if (this.level.coop) this.checkCoopDoor();
+  }
+
+  // Co-op stages only finish when every player is standing at the exit.
+  checkCoopDoor() {
+    const doors = this.doorRects();
+    const ps = this.activePlayers();
+    this.atDoor = ps.filter((p) => !p.dead && (this.isLocal(p) || p.synced) && doors.some((d) => overlap(p.rect, d)));
+    if (this.auth && !this.levelDone && ps.length >= 2 && this.atDoor.length === ps.length) this.completeLevel();
   }
 
   updatePlayer(p, inp) {
@@ -301,7 +326,10 @@ export class World {
     p.vy = Math.min(MAX_FALL, p.vy + GRAV);
 
     p.prevBottom = p.y + p.h;
+    const ride = p.standOn;
+    p.standOn = null;
     this.moveX(p, p.vx);
+    if (ride && ride.present && !ride.dead) this.moveX(p, ride.vx); // carried by the player below
     const wasGround = p.onGround;
     p.onGround = false;
     this.moveY(p, p.vy);
@@ -431,7 +459,8 @@ export class World {
   }
 
   checkDoor(p) {
-    if (this.levelDone) return;
+    if (this.levelDone || this.level.coop) return; // co-op exits need everyone: see checkCoopDoor
+
     if (!this.doorRects().some((d) => overlap(p.rect, d))) return;
     if (this.auth) this.completeLevel();
     else this.onEvent('guest-door');
@@ -451,7 +480,7 @@ export class World {
       const w = this.level.world;
       if (isLastWorld(w)) this.onEvent('victory');
       else {
-        this.worldClear = { world: w, next: WORLDS[w + 1].start };
+        this.worldClear = { world: w, next: WORLDS[w + 1].start, nextCoop: WORLDS[w + 1].coop };
         this.onEvent('world-clear', this.worldClear);
       }
     } else {
@@ -508,9 +537,30 @@ export class World {
     }
   }
 
+  updatePlatesAndGates(alive) {
+    const pressed = [false, false];
+    for (const e of this.entities) {
+      if (e.type !== 'plate') continue;
+      const on = alive.some((p) => this.standingOn(p, e.x, e.y + 8));
+      if (on && e.s === 0) sfx('select');
+      e.s = on ? 1 : 0;
+      if (on) pressed[e.ch] = true;
+    }
+    for (const e of this.entities) {
+      if (e.type !== 'gate') continue;
+      if (pressed[e.ch]) { if (e.s === 0) sfx('gate'); e.s = 1; e.k = GATE_DELAY; }
+      else if (e.s === 1 && --e.k <= 0) { e.s = 0; sfx('gate'); }
+    }
+  }
+
+  shieldDown() {
+    return this.entities.some((e) => e.type === 'plate' && e.s === 1);
+  }
+
   updateEntities() {
     if (this.auth) { this.clock++; this.updateTimers(); }
     const alive = this.alivePlayers();
+    if (this.auth) this.updatePlatesAndGates(alive);
     for (const e of this.entities) {
       switch (e.type) {
         case 'crumble':
@@ -616,7 +666,11 @@ export class World {
           b.x += clamp(tx - b.x, -sp, sp);
         }
         b.y = 32 + Math.sin(this.frame * 0.08) * 3;
-        if (--b.cool <= 0 && target) { this.bossShoot(b, target, phase); b.cool = 80 - phase * 15 - (hard ? 12 : 0); }
+        if (--b.cool <= 0 && target) {
+          const alive = this.alivePlayers();
+          // The Warden spreads its attention: it alternates between players (so the switch-holder isn't safe).
+          const shotAt = b.kind === 2 && alive.length ? alive[(this.bossTurn = (this.bossTurn || 0) + 1) % alive.length] : target;
+          this.bossShoot(b, shotAt, phase); b.cool = 80 - phase * 15 - (hard ? 12 : 0); }
         if (b.k > 170 - phase * 20) { b.s = 2; b.k = 0; }
         break;
       }
@@ -697,13 +751,20 @@ export class World {
       p.canCut = false;
       p.vx = p.x + 3 < b.x + 12 ? -1.5 : 1.5;
       if (this.auth) this.hitBoss();
+      else if (b.shield && !this.shieldDown()) this.clank(b);
       else { b.hurt = 20; sfx('hit'); this.onEvent('guest-hit'); }
     }
+  }
+
+  clank(b) {
+    sfx('clank');
+    this.burst(b.x + 12, b.y + 2, '#4fc8e8', 10);
   }
 
   hitBoss() {
     const b = this.boss;
     if (!b || b.s !== 4) return;
+    if (b.shield && !this.shieldDown()) { this.clank(b); return; }
     b.hp--;
     b.hurt = 30;
     this.shake = 8;
@@ -825,9 +886,21 @@ export class World {
         S.drawEntity(ctx, { type: 'door', x: W / 2 - 4, y: 20 * TILE - 8 }, this.frame, this.levelIndex);
         drawTextCentered(ctx, 'FREEDOM', W / 2, 20 * TILE - 22, '#5fd068');
       }
+      if (b.shield && b.s < 6 && !this.shieldDown()) S.drawShield(ctx, b, this.frame);
+      if (b.s === 4 && b.shield && !this.shieldDown()) drawTextCentered(ctx, 'SHIELDED', b.x + 12, b.y - 12, '#4fc8e8');
       if (b.s === 4 && b.hp === b.maxHp && b.kind === 0) drawTextCentered(ctx, 'STOMP!', b.x + 12, b.y - 12, '#f5c542');
     }
     for (const bu of this.bullets) S.drawBullet(ctx, bu, this.frame);
+
+    if (this.level.coop && !this.levelDone) {
+      const d = this.doorRects()[0];
+      const ps = this.activePlayers();
+      if (d && ps.length < 2) drawTextCentered(ctx, 'NEEDS 2 PLAYERS', d.x + 3, d.y - 12, '#e8334a');
+      else if (d && this.atDoor && this.atDoor.length === 1) {
+        const other = ps.find((p) => p !== this.atDoor[0]);
+        drawTextCentered(ctx, `WAITING FOR ${other ? other.name.slice(0, 8) : '...'}`, Math.min(W - 40, d.x + 3), d.y - 12, '#f5c542');
+      }
+    }
 
     for (const p of this.players) {
       if (!p.present || p.dead) continue;
@@ -863,7 +936,7 @@ export class World {
       ctx.fillStyle = '#0a0610'; ctx.fillRect(bx - 1, 9, bw + 2, 5);
       const seg = bw / b.maxHp;
       for (let i = 0; i < b.maxHp; i++) {
-        ctx.fillStyle = i < b.hp ? (b.kind === 1 ? '#4fc8e8' : '#c05ad0') : '#2a1c3a';
+        ctx.fillStyle = i < b.hp ? ['#c05ad0', '#4fc8e8', '#8ac06a'][b.kind] || '#c05ad0' : '#2a1c3a';
         ctx.fillRect(Math.round(bx + i * seg), 10, Math.round(seg) - 1, 3);
       }
     }
@@ -894,6 +967,7 @@ export class World {
       if (this.worldClear) {
         drawTextCentered(ctx, `WORLD ${this.worldClear.world + 2} UNLOCKED: ${WORLDS[this.worldClear.world + 1].name}`, W / 2, 52, '#5fd068', 1);
         if (this.worldClear.world === 0) drawTextCentered(ctx, '2 PLAYER MODES UNLOCKED', W / 2, 60, '#4fc8e8', 1);
+        if (this.worldClear.nextCoop) drawTextCentered(ctx, 'IT IS CO-OP ONLY: GRAB A FRIEND', W / 2, 60, '#4fc8e8', 1);
       }
       const secs = Math.floor(this.time / 60);
       drawTextCentered(ctx, `TIME ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`, W / 2, 74, '#ffffff', 2);

@@ -1,16 +1,29 @@
 # RAGE
 
-A pixel-art rage platformer for the browser with two worlds, each ending in a boss. World 1 is solo. Beating its boss unlocks World 2, where you can play solo, local 2-player or online 2-player through a lobby.
+A pixel-art rage platformer for the browser with three worlds, each ending in a boss:
+
+- **World 1** is solo.
+- Beating its boss unlocks **World 2**, which you can play solo, local 2-player or online 2-player through a lobby.
+- Beating World 2 unlocks **World 3**, which is co-op only: two players have to work together to beat it.
 
 Everything is built with plain HTML5 canvas, CSS and JavaScript. It has **zero dependencies** and no external assets: all the pixel art, the font and the sound effects are generated in code.
 
 ## Play
 
 ```bash
-npm start            # http://127.0.0.1:8080  (this machine only)
-npm run start:lan    # HOST=0.0.0.0: friends on your Wi-Fi can join
+npm start            # this computer + other devices on your Wi-Fi / LAN
+npm run start:local  # this computer only
 npm test             # protocol, level and server security tests
 ```
+
+`npm start` prints two addresses:
+
+```
+  On this computer:   http://localhost:8080
+  On your Wi-Fi/LAN:  http://192.168.1.23:8080
+```
+
+Open the second one on a phone, tablet or another computer on the same network. The game also shows it on the main menu and in the Online lobby. If nothing loads on the other device, allow Node through your computer's firewall when asked (macOS shows a popup the first time; on Windows choose "Private networks"). Use `PORT=8081 npm start` if port 8080 is taken.
 
 Requires Node 18 or newer. The `public/` folder also works on any static host (GitHub Pages, etc.). There the room-code lobby is unavailable, so use **Manual connect** instead.
 
@@ -21,7 +34,9 @@ Requires Node 18 or newer. The `public/` folder also works on any static host (G
 | Move | A D / ← → | A D | ← → |
 | Jump (hold = higher) | Space W ↑ Z | W / Space | ↑ / Num0 |
 
-**R** restarts the stage (it counts as a death), **Esc** pauses and **M** mutes. Phones get on-screen buttons.
+**R** restarts the stage (it counts as a death), **Esc** pauses and **M** mutes.
+
+**Touch controls** turn on automatically on phones and tablets. In local 2-player each player gets their own set: P1 bottom-left (red), P2 bottom-right (blue), so two people can share one tablet. You can force them on or off under **Controls → Touch controls** (or from the pause menu), for example on a tablet with a keyboard or a touchscreen laptop.
 
 ### Menus, saving and level select
 
@@ -48,7 +63,15 @@ Saves stay in your browser (`localStorage`) and never leave your machine. A save
 4. **Gauntlet**: everything at once :)
 5. **Boss, The Overclock**: faster, 6 hits, and its slam brings shards down from the ceiling. The floor belts push you toward it.
 
-The 2-player modes (local and online) are locked until World 2 is unlocked, and multiplayer games only use World 2 stages.
+### World 3: The Bond (unlocks after The Overclock, co-op only)
+1. **Teamwork**: a ledge too high for one player. Stand on your partner's head.
+2. **Tag Team**: gates open only while someone holds the matching plate. You hold, I go, then swap.
+3. **Trust Fall**: boost, hold, spring, hold again.
+4. **Boss, The Warden**: its shield only drops while someone stands on a floor switch. One player holds the switch while the other stomps. It shoots at both of you in turn.
+
+The exit door in World 3 only works when **both** players are at it. If your online partner leaves during World 3, the game ends, because it can't be finished alone.
+
+The 2-player modes (local and online) are locked until World 2 is unlocked. Multiplayer games use World 2 and World 3; when hosting online you pick which world to start in.
 
 Traps reset when everyone is dead. In co-op, one player can scout while the other survives.
 
@@ -75,7 +98,8 @@ Both modes unlock once you beat World 1, and multiplayer games are played in Wor
   - Join attempts are rate-limited per IP, which stops code guessing. Every endpoint has rate limits.
   - Bodies are size-capped and must be JSON. Cross-origin POSTs are rejected.
   - Rooms expire after 15 minutes. Rooms, queues and long-polls all have caps. Timeouts limit slow-request attacks.
-  - The server listens on localhost unless you set `HOST`.
+  - It only answers requests addressed to `localhost`, an IP address or a `*.local` name. This stops websites from reaching it through "DNS rebinding" while it's open to your local network. To serve it under a domain name, set `ALLOWED_HOSTS=game.example.com`.
+  - `npm start` is reachable on your local network, and `npm run start:local` limits it to this computer.
 - **Privacy note:** as with any WebRTC game, your partner can see your IP address. Only share codes with people you trust.
 
 ### Deploying publicly

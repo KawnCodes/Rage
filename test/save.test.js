@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clean, emptySave, recordClear, formatTime, multiplayerUnlocked } from '../public/js/save.js';
-import { LEVELS, MULTIPLAYER_START } from '../public/js/levels.js';
+import { LEVELS, MULTIPLAYER_START, COOP_START } from '../public/js/levels.js';
 
 test('garbage saves fall back to an empty save', () => {
   for (const raw of [null, 42, 'x', [], { unlocked: 'all' }]) {
@@ -58,4 +58,11 @@ test('local 2P runs inside world 1 are dropped', () => {
 test('old saves that beat the grudge get world 2', () => {
   assert.equal(clean({ unlocked: MULTIPLAYER_START - 1, wins: 1 }).unlocked, MULTIPLAYER_START);
   assert.equal(clean({ unlocked: 3 }).unlocked, 3);
+});
+
+test('a solo run can never sit inside the co-op world', () => {
+  const s = clean({ unlocked: COOP_START, run: { mode: 'solo', level: COOP_START + 1 } });
+  assert.equal(s.run, null);
+  assert.ok(s.unlocked >= COOP_START + 1);
+  assert.equal(clean({ run: { mode: 'local', level: COOP_START } }).run.level, COOP_START);
 });

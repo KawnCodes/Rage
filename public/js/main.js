@@ -7,7 +7,7 @@ import { drawTextCentered } from './font.js';
 import { PeerLink, Signaling } from './net.js';
 import { PROTOCOL_VERSION, sanitizeName, encodeManual, decodeManual, ROOM_CODE_RE } from './protocol.js';
 import { renderLevelCanvas } from './sprites.js';
-import { LEVELS, WORLDS, MULTIPLAYER_START, isBossLevel, stageLabel as shortLabel } from './levels.js';
+import { LEVELS, WORLDS, MULTIPLAYER_START, COOP_START, isBossLevel, isCoopLevel, stageLabel as shortLabel } from './levels.js';
 import * as Save from './save.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -49,11 +49,34 @@ fit();
 const panels = ['menu-main', 'menu-levels', 'menu-online', 'menu-manual', 'menu-controls', 'menu-pause'];
 input.bindTouch($('#touch'));
 
+// ---------- touch controls ----------
+// 'auto' shows them on phones/tablets; 'on'/'off' force it (e.g. a tablet with a keyboard).
+const TOUCH_MODES = ['auto', 'on', 'off'];
+let touchMode = TOUCH_MODES.includes(store.get('rage-touch')) ? store.get('rage-touch') : 'auto';
+const isTouchDevice = () => {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(any-pointer: coarse)').matches ||
+      (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
+  } catch { return false; }
+};
+const touchActive = () => touchMode === 'on' || (touchMode === 'auto' && isTouchDevice());
+function updateTouchUi() {
+  const label = `Touch controls: ${touchMode}${touchMode === 'auto' ? (isTouchDevice() ? ' (on)' : ' (off)') : ''}`;
+  for (const b of document.querySelectorAll('.touch-btn')) b.textContent = label;
+  const t = $('#touch');
+  t.hidden = currentPanel !== null || !world || !touchActive();
+  t.dataset.layout = mode === 'local' ? 'two' : 'one';
+  document.body.classList.toggle('touch-on', touchActive());
+  document.body.classList.toggle('playing', !!world && currentPanel === null);
+}
+// A first touch anywhere on a device we didn't detect switches 'auto' on.
+window.addEventListener('touchstart', () => { if (touchMode === 'auto') updateTouchUi(); }, { passive: true });
+
 function show(id) {
   currentPanel = id;
   for (const p of panels) $(`#${p}`).hidden = p !== id;
   input.capture = id === null;
-  $('#touch').hidden = id !== null;
+  updateTouchUi();
   const barHidden = !world;
   if ($('#toolbar').hidden !== barHidden) { $('#toolbar').hidden = barHidden; fit(); }
   if (id === 'menu-main') refreshMain();
@@ -145,9 +168,14 @@ const actions = {
     renderLevels();
     toast('Progress reset');
   },
-  online: () => { if (requireMultiplayer()) { show('menu-online'); checkServer(); } },
+  online: () => { if (requireMultiplayer()) { renderWorldPick(); show('menu-online'); checkServer(); } },
   controls: () => { show('menu-controls'); renderPads(); },
   mute: () => toggleMute(),
+  'touch-mode': () => {
+    touchMode = TOUCH_MODES[(TOUCH_MODES.indexOf(touchMode) + 1) % TOUCH_MODES.length];
+    store.set('rage-touch', touchMode);
+    updateTouchUi();
+  },
   home: () => goHome(),
   pause: () => setPaused(!paused),
   restart: () => { if (world) { world.localIdx.forEach((i) => world.restart(i)); setPaused(false); } },
@@ -205,7 +233,8 @@ function startGame(m, opts = {}) {
   mode = m;
   paused = false;
   const names = m === 'host' ? [myName(), partnerName] : m === 'guest' ? [partnerName, myName()] : ['P1', 'P2'];
-  if (m === 'host' || m === 'guest') opts = { ...opts, startLevel: MULTIPLAYER_START }; // online play is World 2 onwards
+  if (m === 'guest') opts = { ...opts, startLevel: MULTIPLAYER_START }; // the host's 'lvl' message moves us to the right stage
+  if (m === 'host') opts = { ...opts, startLevel: hostStartLevel() }; // online play is World 2 onwards
   world = new World({ mode: m, names, onEvent, ...opts });
   autosave();
   show(null);
@@ -213,6 +242,7 @@ function startGame(m, opts = {}) {
 
 function newRun(m, startLevel = 0) {
   let lv = Math.min(startLevel, save.unlocked);
+  if (m === 'solo' && isCoopLevel(lv)) { toast('World 3 is co-op only: play it in Local 2 player or Online', 3000); return; }
   if (m === 'local') {
     if (!Save.multiplayerUnlocked(save)) return;
     lv = Math.max(lv, MULTIPLAYER_START); // 2 player is World 2 onwards
@@ -283,6 +313,7 @@ function refreshMain() {
     el.title = mp ? '' : 'Unlocks in World 2';
   }
   $('#mp-note').hidden = mp;
+  $('#coop-note').hidden = save.unlocked < COOP_START;
   const bits = [`Lifetime deaths: ${save.totalDeaths}`];
   if (save.wins) bits.push(`Wins: ${save.wins}`);
   $('#stats-line').textContent = bits.join(' · ');
@@ -314,19 +345,22 @@ function renderLevels() {
       const h = document.createElement('h3');
       h.className = 'world-head';
       const worldLocked = w.start > save.unlocked;
-      h.textContent = `World ${L.world + 1}: ${w.name}` +
+      h.textContent = `World ${L.world + 1}: ${w.name}` + (w.coop ? ' · co-op' : '') +
         (worldLocked ? ` · locked (beat World ${L.world} boss)` : '') +
-        (!worldLocked && lvMode === 'local' && w.start < MULTIPLAYER_START ? ' · solo only' : '');
+        (!worldLocked && lvMode === 'local' && w.start < MULTIPLAYER_START ? ' · solo only' : '') +
+        (!worldLocked && lvMode === 'solo' && w.coop ? ' · needs 2 players' : '');
       grid.append(h);
     }
     const soloOnly = lvMode === 'local' && i < MULTIPLAYER_START;
-    const locked = i > save.unlocked || soloOnly;
+    const needsTwo = lvMode === 'solo' && isCoopLevel(i);
+    const locked = i > save.unlocked || soloOnly || needsTwo;
     const b = document.createElement('button');
     b.className = `level-card${locked ? ' locked' : ''}${isBossLevel(i) ? ' boss' : ''}`;
     b.disabled = locked;
     const num = document.createElement('span');
     num.className = 'num';
-    num.textContent = soloOnly && i <= save.unlocked ? `${stageLabel(i)} · solo only` : locked ? `${stageLabel(i)} · locked` : stageLabel(i);
+    num.textContent = soloOnly && i <= save.unlocked ? `${stageLabel(i)} · solo only`
+      : needsTwo && i <= save.unlocked ? `${stageLabel(i)} · 2 players` : locked ? `${stageLabel(i)} · locked` : stageLabel(i);
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = i > save.unlocked ? '???' : L.name;
@@ -384,11 +418,13 @@ function onEvent(type, data) {
   if (type === 'world-clear' && data) {
     const firstUnlock = data.world === 0 && !save.best[MULTIPLAYER_START];
     if (savesRuns()) {
-      save.run = { mode, level: data.next, deaths: world.players.map((p) => p.deaths).concat(0).slice(0, 2), time: world.time };
-      world.continueNext = mode === 'solo' || data.next >= MULTIPLAYER_START;
+      const canGoOn = !(mode === 'solo' && data.nextCoop);
+      save.run = canGoOn ? { mode, level: data.next, deaths: world.players.map((p) => p.deaths).concat(0).slice(0, 2), time: world.time } : null;
+      world.continueNext = canGoOn;
     }
     Save.store(save);
-    toast(firstUnlock ? `World ${data.world + 2} unlocked! 2 player modes unlocked!` : `World ${data.world + 2} unlocked!`, 4000);
+    toast(firstUnlock ? `World ${data.world + 2} unlocked! 2 player modes unlocked!`
+      : data.nextCoop ? `World ${data.world + 2} unlocked! It's co-op: grab a friend.` : `World ${data.world + 2} unlocked!`, 4000);
     if (mode === 'host' && link) link.send({ t: 'win' }, true);
   }
   if (type === 'victory') {
@@ -430,7 +466,10 @@ function attachLink(l, isHost) {
       setStatus('#manual-status', 'Connection failed or closed.', true);
       return;
     }
-    if (mode === 'host') {
+    if (mode === 'host' && world.level.coop) {
+      toast('Partner left. World 3 needs 2 players, so the game ended.', 5000);
+      quitToMenu();
+    } else if (mode === 'host') {
       toast('Partner left — carrying on solo', 4000);
       world.dropRemote(1);
       world.checkAllDead();
@@ -466,6 +505,27 @@ function onNet(m, isHost) {
     else if (m.t === 'lvl') { if (m.lv !== world.levelIndex) world.startTransition(m.lv); }
     else if (m.t === 'win') world.showVictory();
   }
+}
+
+function hostStartLevel() {
+  const v = Number($('#in-world').value);
+  const w = WORLDS.find((x) => x.start === v);
+  return w && w.start >= MULTIPLAYER_START && w.start <= save.unlocked ? w.start : MULTIPLAYER_START;
+}
+
+function renderWorldPick() {
+  const sel = $('#in-world');
+  const prev = sel.value;
+  sel.replaceChildren();
+  for (const [i, w] of WORLDS.entries()) {
+    if (w.start < MULTIPLAYER_START || w.start > save.unlocked) continue;
+    const o = document.createElement('option');
+    o.value = String(w.start);
+    o.textContent = `World ${i + 1}: ${w.name}${w.coop ? ' (co-op)' : ''}`;
+    sel.append(o);
+  }
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  $('#world-pick-label').hidden = sel.options.length < 2;
 }
 
 // ---------- online: lobby server ----------
@@ -610,7 +670,7 @@ function step() {
     if (input.wasPressed('KeyH') && !currentPanel) { goHome(); input.endFrame(); return; }
     if (world.frame % 300 === 0 && savesRuns()) autosave();
     updateToolbar();
-    if (world.won && (input.wasPressed('Enter') || input.wasPressed('TouchJump') || input.wasPressed('Space') || input.padPressed('jump'))) {
+    if (world.won && (input.wasPressed('Enter') || input.wasPressed('TouchJump') || input.wasPressed('TouchJump2') || input.wasPressed('Space') || input.padPressed('jump'))) {
       if (world.worldClear && world.continueNext && save.run) {
         const r = save.run;
         startGame(r.mode, { startLevel: r.level, deaths: r.deaths, time: r.time });
@@ -663,5 +723,22 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+// Show the address other devices on the same Wi-Fi can open (only when the server allows it).
+async function showLanAddress() {
+  try {
+    const r = await fetch('api/lan', { cache: 'no-store', credentials: 'omit' });
+    if (!r.ok) return;
+    const j = await r.json();
+    const urls = Array.isArray(j.urls) ? j.urls.filter((u) => typeof u === 'string' && /^http:\/\/[0-9.]{7,15}:\d{1,5}$/.test(u)) : [];
+    if (!urls.length) return; // local-only mode, or static hosting
+    for (const el of document.querySelectorAll('.lan-line')) {
+      el.textContent = `Same Wi-Fi? Other devices can play at ${urls[0]}`;
+      el.hidden = false;
+    }
+  } catch { /* static hosting: no server, nothing to show */ }
+}
+
 show('menu-main');
+updateTouchUi();
+showLanAddress();
 requestAnimationFrame(frame);

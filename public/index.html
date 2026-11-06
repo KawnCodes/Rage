@@ -35,7 +35,9 @@
           <button data-go="mute" id="btn-mute">Sound: on</button>
         </div>
         <p id="mp-note" class="note center" hidden>🔒 2 player modes unlock in World 2. Beat The Grudge first.</p>
+        <p id="coop-note" class="note center" hidden>World 3 is co-op only: play it in Local 2 player or Online.</p>
         <p id="stats-line" class="note center"></p>
+        <p class="lan-line note center" hidden></p>
       </section>
 
       <section id="menu-levels" class="panel wide" hidden>
@@ -57,6 +59,9 @@
         <label>Your name
           <input id="in-name" maxlength="12" autocomplete="off" spellcheck="false" placeholder="PLAYER">
         </label>
+        <label id="world-pick-label">Start in
+          <select id="in-world"></select>
+        </label>
         <div id="server-box">
           <button data-go="host">Host a room</button>
           <div class="row">
@@ -64,6 +69,7 @@
             <button data-go="join">Join</button>
           </div>
         </div>
+        <p class="lan-line note" hidden></p>
         <p id="no-server" class="note" hidden>No lobby server found (static hosting). Use manual connect below, or run <code>npm start</code>.</p>
         <p id="room-display" class="code-big" hidden></p>
         <p id="online-status" class="status" role="status"></p>
@@ -105,6 +111,8 @@
           <tr><td>Move</td><td>A D / ← →</td><td>A D</td><td>← →</td></tr>
           <tr><td>Jump</td><td>Space W ↑ Z</td><td>W / Space</td><td>↑ / Num0</td></tr>
         </table>
+        <button data-go="touch-mode" class="touch-btn">Touch controls: auto</button>
+        <p class="note">Touch controls show up automatically on phones and tablets. In local 2 player each player gets their own set: P1 on the left, P2 on the right.</p>
         <p class="note">Hold jump to jump higher. <b>R</b> restarts (counts as a death). <b>Esc</b> pauses. <b>H</b> goes home. <b>M</b> mutes. In menus, use arrow keys / D-pad and Enter / A.</p>
         <h2>Controllers &amp; Bluetooth</h2>
         <p class="note">Pair any Bluetooth (or USB) gamepad with your device, then press a button on it. Controller 1 → P1, controller 2 → P2. With one controller in local 2P, it plays P2 and the keyboard plays P1.</p>
@@ -120,16 +128,25 @@
         <button data-go="restart" class="offline-only">Restart stage</button>
         <button data-go="levels" class="offline-only">Level select</button>
         <button data-go="mute" class="mute-btn">Sound: on</button>
+        <button data-go="touch-mode" class="touch-btn">Touch controls: auto</button>
         <button data-go="quit">Home</button>
         <p class="note">Progress is saved automatically.</p>
       </section>
     </div>
 
-    <div id="touch" hidden>
-      <button data-touch="TouchLeft" aria-label="Move left">◀</button>
-      <button data-touch="TouchRight" aria-label="Move right">▶</button>
-      <button data-touch="TouchJump" aria-label="Jump" class="jump">▲</button>
+    <div id="touch" hidden data-layout="one">
+      <div class="tp tp1" aria-label="Player 1 touch controls">
+        <button data-touch="TouchLeft" aria-label="Player 1 left">◀</button>
+        <button data-touch="TouchRight" aria-label="Player 1 right">▶</button>
+        <button data-touch="TouchJump" aria-label="Player 1 jump" class="jump">▲</button>
+      </div>
+      <div class="tp tp2" aria-label="Player 2 touch controls">
+        <button data-touch="TouchLeft2" aria-label="Player 2 left">◀</button>
+        <button data-touch="TouchRight2" aria-label="Player 2 right">▶</button>
+        <button data-touch="TouchJump2" aria-label="Player 2 jump" class="jump">▲</button>
+      </div>
     </div>
+    <p id="rotate-hint">Turn your device sideways for a bigger view ↻</p>
 
     <div id="toast" role="alert" hidden></div>
   </main>

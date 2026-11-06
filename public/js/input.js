@@ -4,7 +4,7 @@
 const SCHEMES = {
   all: { left: ['ArrowLeft', 'KeyA', 'TouchLeft'], right: ['ArrowRight', 'KeyD', 'TouchRight'], jump: ['Space', 'ArrowUp', 'KeyW', 'KeyZ', 'KeyK', 'TouchJump'] },
   p1: { left: ['KeyA', 'TouchLeft'], right: ['KeyD', 'TouchRight'], jump: ['KeyW', 'Space', 'TouchJump'] },
-  p2: { left: ['ArrowLeft'], right: ['ArrowRight'], jump: ['ArrowUp', 'Slash', 'Numpad0', 'ControlRight'] },
+  p2: { left: ['ArrowLeft', 'TouchLeft2'], right: ['ArrowRight', 'TouchRight2'], jump: ['ArrowUp', 'Slash', 'Numpad0', 'ControlRight', 'TouchJump2'] },
 };
 const GAME_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Slash', 'Numpad0']);
 

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { createServer } from '../server/server.js';
 
 let server, base;
@@ -85,4 +86,24 @@ test('oversized body refused', async () => {
 test('invalid room codes', async () => {
   assert.equal((await post('/api/rooms/abc/join')).status, 404);
   assert.equal((await post('/api/rooms/ZZZZZZ/join')).status, 404);
+});
+
+const rawGet = (path, host) => new Promise((resolve, reject) => {
+  const u = new URL(base);
+  const req = http.request({ hostname: u.hostname, port: u.port, path, headers: { Host: host } }, (res) => { res.resume(); resolve(res.statusCode); });
+  req.on('error', reject);
+  req.end();
+});
+
+test('unknown Host headers are refused (DNS rebinding protection)', async () => {
+  assert.equal(await rawGet('/', 'evil.example.com'), 421);
+  assert.equal(await rawGet('/api/health', 'attacker.test:8080'), 421);
+  for (const ok of ['localhost:8080', '127.0.0.1', '192.168.1.20:8080', 'gaming-pc.local:8080', '[::1]:8080']) {
+    assert.equal(await rawGet('/', ok), 200, ok);
+  }
+});
+
+test('lan endpoint is empty when listening on localhost only', async () => {
+  const r = await fetch(base + '/api/lan');
+  assert.deepEqual(await r.json(), { urls: [] });
 });
