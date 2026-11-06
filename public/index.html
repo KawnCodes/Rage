@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Strict CSP for static hosting; server/server.js also sends it as a header. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>RAGE</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <main id="app">
+    <canvas id="screen" width="320" height="184" aria-label="Game screen"></canvas>
+
+    <div id="overlay">
+      <section id="menu-main" class="panel">
+        <h1>RAGE</h1>
+        <p class="tag">a perfectly fair platformer</p>
+        <button data-go="solo">Play solo</button>
+        <button data-go="local">Local 2 player</button>
+        <button data-go="online">Online lobby</button>
+        <button data-go="controls">Controls &amp; Bluetooth</button>
+        <button data-go="mute" id="btn-mute">Sound: on</button>
+      </section>
+
+      <section id="menu-online" class="panel" hidden>
+        <h2>Online lobby</h2>
+        <label>Your name
+          <input id="in-name" maxlength="12" autocomplete="off" spellcheck="false" placeholder="PLAYER">
+        </label>
+        <div id="server-box">
+          <button data-go="host">Host a room</button>
+          <div class="row">
+            <input id="in-code" maxlength="6" autocomplete="off" spellcheck="false" placeholder="ROOM CODE" aria-label="Room code">
+            <button data-go="join">Join</button>
+          </div>
+        </div>
+        <p id="no-server" class="note" hidden>No lobby server found (static hosting). Use manual connect below, or run <code>npm start</code>.</p>
+        <p id="room-display" class="code-big" hidden></p>
+        <p id="online-status" class="status" role="status"></p>
+        <button data-go="manual">Manual connect (no server)</button>
+        <button data-go="back">Back</button>
+      </section>
+
+      <section id="menu-manual" class="panel" hidden>
+        <h2>Manual connect</h2>
+        <p class="note">Swap two codes with your friend (chat, email…). Codes contain your network addresses, so only share them with people you trust.</p>
+        <div class="row">
+          <button data-go="manual-host">I'm hosting</button>
+          <button data-go="manual-guest">I'm joining</button>
+        </div>
+        <div id="manual-host" hidden>
+          <p class="step">1. Send this code to your friend:</p>
+          <textarea id="mh-offer" readonly rows="3" aria-label="Your host code"></textarea>
+          <button data-go="copy-offer">Copy</button>
+          <p class="step">2. Paste their reply code:</p>
+          <textarea id="mh-answer" rows="3" aria-label="Reply code"></textarea>
+          <button data-go="mh-connect">Connect</button>
+        </div>
+        <div id="manual-guest" hidden>
+          <p class="step">1. Paste the host's code:</p>
+          <textarea id="mg-offer" rows="3" aria-label="Host code"></textarea>
+          <button data-go="mg-make">Make reply code</button>
+          <p class="step">2. Send this reply back:</p>
+          <textarea id="mg-answer" readonly rows="3" aria-label="Your reply code"></textarea>
+          <button data-go="copy-answer">Copy</button>
+        </div>
+        <p id="manual-status" class="status" role="status"></p>
+        <button data-go="back-online">Back</button>
+      </section>
+
+      <section id="menu-controls" class="panel" hidden>
+        <h2>Controls</h2>
+        <table>
+          <tr><th></th><th>Solo / Online</th><th>Local P1</th><th>Local P2</th></tr>
+          <tr><td>Move</td><td>A D / ← →</td><td>A D</td><td>← →</td></tr>
+          <tr><td>Jump</td><td>Space W ↑ Z</td><td>W / Space</td><td>↑ / Num0</td></tr>
+        </table>
+        <p class="note">Hold jump to jump higher. <b>R</b> restarts (counts as a death). <b>Esc</b> pauses. <b>M</b> mutes.</p>
+        <h2>Controllers &amp; Bluetooth</h2>
+        <p class="note">Pair any Bluetooth (or USB) gamepad with your device, then press a button on it. Controller 1 → P1, controller 2 → P2. With one controller in local 2P, it plays P2 and the keyboard plays P1.</p>
+        <p class="note">Browsers can't link two devices to each other directly over Bluetooth (Web Bluetooth only talks to accessories), so two-device play uses the online lobby. It also works on a local Wi-Fi / hotspot.</p>
+        <ul id="pad-list"><li>No controllers detected yet.</li></ul>
+        <button data-go="back">Back</button>
+      </section>
+
+      <section id="menu-pause" class="panel" hidden>
+        <h2>Paused</h2>
+        <button data-go="resume">Resume</button>
+        <button data-go="quit">Quit to menu</button>
+      </section>
+    </div>
+
+    <div id="touch" hidden>
+      <button data-touch="TouchLeft" aria-label="Move left">◀</button>
+      <button data-touch="TouchRight" aria-label="Move right">▶</button>
+      <button data-touch="TouchJump" aria-label="Jump" class="jump">▲</button>
+      <button id="touch-pause" aria-label="Pause" class="pause">II</button>
+    </div>
+
+    <div id="toast" role="alert" hidden></div>
+  </main>
+</body>
+</html>

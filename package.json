@@ -1,0 +1,14 @@
+{
+  "name": "rage",
+  "version": "1.0.0",
+  "description": "A pixel-art rage platformer with local and online co-op. Zero dependencies.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server/server.js",
+    "start:lan": "HOST=0.0.0.0 node server/server.js",
+    "test": "node --test test/*.test.js"
+  }
+}
