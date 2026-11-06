@@ -470,7 +470,6 @@ export class World {
   completeLevel() {
     if (this.levelDone) return;
     this.levelDone = true;
-    sfx('door');
     this.onEvent('level-complete', {
       level: this.levelIndex,
       deaths: this.localDeaths() - this.levelStartDeaths,
@@ -478,7 +477,7 @@ export class World {
     });
     if (isBossLevel(this.levelIndex)) {
       this.won = true;
-      this.cheer = 70;
+      this.huzzar();
       const w = this.level.world;
       if (isLastWorld(w)) this.onEvent('victory');
       else {
@@ -493,10 +492,15 @@ export class World {
   startTransition(next) {
     if (!LEVELS[next] || this.trans) return;
     this.trans = { t: 0, next };
-    this.cheer = 70; // HUZZAR!!
+    this.huzzar();
   }
 
-  showVictory() { this.won = true; this.levelDone = true; this.cheer = 70; sfx('win'); }
+  showVictory() { this.won = true; this.levelDone = true; this.huzzar(); }
+
+  huzzar() {
+    this.cheer = 70;
+    sfx('huzzar');
+  }
 
   // Host-side validation of a remote player's claims.
   tryRemoteDoor(idx) {
