@@ -1,6 +1,7 @@
 // All pixel art is defined in code (string sprites + procedural tiles), so
 // the game ships with zero external image assets.
 import { TILE, COLS, ROWS, W, H } from './levels.js';
+import { lookFrames, lookColor, lookKey, DEFAULT_LOOKS, SPRITE_H } from './looks.js';
 
 export const PAL = {
   K: '#0a0610', W: '#f4f0ff', red: '#e8334a', yel: '#f5c542', org: '#f08a30',
@@ -82,42 +83,40 @@ export function hash(x, y) {
 }
 
 // ---- Player ----
-const BODY = [
-  '..KKKK..',
-  '.KHRRRK.',
-  'KRRRRRRK',
-  'KRWKRWKK',
-  'KRRRRRRK',
-  'KRRKKKRK',
-  '.KRRRRK.',
-];
-const PLAYER_FRAMES = [
-  [...BODY, '.KK..KK.'],
-  [...BODY, 'KK...KK.'],
-  [...BODY, '..KK.KK.'],
-  [...BODY.slice(0, 6), 'KRRRRRRK', 'K.K..K.K'],
-  ['........', '........', '..KKKK..', '.KHRRRK.', 'KRKRRKRK', 'KRRKRRKK', 'KRKRRKRK', 'KKKKKKKK'],
-];
-const PLAYER_PALS = [
-  { K: PAL.K, W: PAL.W, R: '#e8334a', H: '#ff8a9a' },
-  { K: PAL.K, W: PAL.W, R: '#3cb4e0', H: '#a8e8ff' },
-];
-let playerSprites = null;
-function getPlayerSprites() {
-  if (!playerSprites) {
-    playerSprites = PLAYER_PALS.map((pal) => PLAYER_FRAMES.map((f) => {
-      const s = sprite(f, pal);
-      return [s, flip(s)];
-    }));
+// Players are drawn from their look (see looks.js); frames are cached per look.
+const playerCache = new Map();
+
+function lookSprites(look) {
+  const key = lookKey(look);
+  let frames = playerCache.get(key);
+  if (!frames) {
+    frames = lookFrames(look).map((rows) => {
+      const c = canvas(8, SPRITE_H);
+      const x = c.getContext('2d');
+      rows.forEach((row, j) => row.forEach((col, i) => { if (col) { x.fillStyle = col; x.fillRect(i, j, 1, 1); } }));
+      return [c, flip(c)];
+    });
+    if (playerCache.size > 64) playerCache.clear();
+    playerCache.set(key, frames);
   }
-  return playerSprites;
+  return frames;
 }
-export const playerColor = (idx) => PLAYER_PALS[idx % 2].R;
+
+const lookOf = (p) => p.look || DEFAULT_LOOKS[p.idx % 2];
+export const playerColor = (p) => lookColor(lookOf(typeof p === 'number' ? { idx: p } : p));
+export const HAT_ROWS = SPRITE_H - 8;
 
 export function drawPlayer(ctx, p) {
-  const frames = getPlayerSprites()[p.idx % 2];
+  const frames = lookSprites(lookOf(p));
   const f = frames[Math.min(frames.length - 1, Math.max(0, p.anim | 0))];
-  ctx.drawImage(f[p.f < 0 ? 1 : 0], Math.round(p.x) - 1, Math.round(p.y));
+  ctx.drawImage(f[p.f < 0 ? 1 : 0], Math.round(p.x) - 1, Math.round(p.y) - HAT_ROWS);
+}
+
+// Big preview for the customise screen.
+export function drawLookPreview(ctx, look, frame, scale) {
+  const frames = lookSprites(look);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(frames[frame][0], 0, 0, 8 * scale, SPRITE_H * scale);
 }
 
 // ---- Spikes ----

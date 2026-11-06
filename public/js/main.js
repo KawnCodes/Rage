@@ -10,6 +10,8 @@ import { renderLevelCanvas } from './sprites.js';
 import { LEVELS, WORLDS, MULTIPLAYER_START, COOP_START, isBossLevel, isCoopLevel, stageLabel as shortLabel } from './levels.js';
 import * as Save from './save.js';
 import { MapScreen } from './map.js';
+import * as Looks from './looks.js';
+import { drawLookPreview } from './sprites.js';
 
 const $ = (sel) => document.querySelector(sel);
 const canvas = $('#screen');
@@ -54,7 +56,7 @@ window.addEventListener('orientationchange', () => setTimeout(fit, 150));
 fit();
 
 // ---------- menus ----------
-const panels = ['menu-main', 'menu-levels', 'menu-room', 'menu-profiles', 'menu-online', 'menu-manual', 'menu-controls', 'menu-cheats', 'menu-pause'];
+const panels = ['menu-main', 'menu-levels', 'menu-custom', 'menu-room', 'menu-profiles', 'menu-online', 'menu-manual', 'menu-controls', 'menu-cheats', 'menu-pause'];
 const touchPad = new TouchPad($('#touch'), input);
 
 // ---------- touch controls ----------
@@ -188,6 +190,19 @@ function myName() {
   return n;
 }
 
+// ---------- characters: looks + names ----------
+// Player 1 is "you" (also your look online); Player 2 is the second local player.
+function loadLooks() {
+  let raw = null;
+  try { raw = JSON.parse(store.get('rage-looks-v1') || 'null'); } catch { raw = null; }
+  const arr = Array.isArray(raw) ? raw : [];
+  return [Looks.cleanLook(arr[0], Looks.DEFAULT_LOOKS[0]), Looks.cleanLook(arr[1], Looks.DEFAULT_LOOKS[1])];
+}
+let looks = loadLooks();
+let partnerLook = Looks.DEFAULT_LOOKS[1];
+const playerNames = () => [sanitizeName(store.get('rage-name') || 'P1'), sanitizeName(store.get('rage-name2') || 'P2')];
+function saveLooks() { store.set('rage-looks-v1', JSON.stringify(looks)); }
+
 document.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-go]');
   if (!b) return;
@@ -255,6 +270,14 @@ const actions = {
   'mh-connect': () => manualHostConnect(),
   'mg-make': () => manualGuestAnswer(),
   resume: () => setPaused(false),
+  customise: () => openCustomise(),
+  'cust-p1': () => { custPlayer = 0; renderCustomise(); },
+  'cust-p2': () => { custPlayer = 1; renderCustomise(); },
+  'cust-random': () => { setLook({ ...Looks.randomLook(), px: undefined }); },
+  'cust-done': () => closeCustomise(),
+  'paint-start': () => { if (!looks[custPlayer].px) setLook({ ...looks[custPlayer], px: Looks.presetToPx(looks[custPlayer]) }); paintOpen = true; renderCustomise(); },
+  'paint-clear': () => setLook({ ...looks[custPlayer], px: '0'.repeat(56) }),
+  'paint-off': () => { const l = { ...looks[custPlayer] }; delete l.px; paintOpen = false; setLook(l); },
   quit: () => quitToMenu(),
 };
 
@@ -292,7 +315,9 @@ async function copy(sel) {
 function startGame(m, opts = {}) {
   mode = m;
   paused = false;
-  const names = m === 'host' ? [myName(), partnerName] : m === 'guest' ? [partnerName, myName()] : ['P1', 'P2'];
+  const names = m === 'host' ? [myName(), partnerName] : m === 'guest' ? [partnerName, myName()] : playerNames();
+  const lk = m === 'host' ? [looks[0], partnerLook] : m === 'guest' ? [partnerLook, looks[0]] : looks;
+  opts = { ...opts, looks: lk };
   if (m === 'guest') { // the host decides; anything odd falls back to World 2
     const lv = Number(opts.startLevel);
     opts = { ...opts, startLevel: Number.isInteger(lv) && LEVELS[lv] && lv >= MULTIPLAYER_START ? lv : MULTIPLAYER_START };
@@ -491,6 +516,163 @@ canvas.addEventListener('pointerdown', (e) => {
   else { sfx('bonk'); toast('Locked: beat the stage before it first', 2000); }
 });
 
+// ---------- customise screen ----------
+let custPlayer = 0;
+let custReturn = 'menu-main';
+let paintOpen = false;
+let paintColor = 1;
+let custFrame = 0;
+
+function openCustomise() {
+  custReturn = currentPanel || 'menu-main';
+  custPlayer = 0;
+  paintOpen = !!looks[0].px;
+  renderCustomise();
+  show('menu-custom');
+}
+
+function closeCustomise() {
+  const n = sanitizeName($('#cust-name').value);
+  store.set(custPlayer === 0 ? 'rage-name' : 'rage-name2', n);
+  if (custPlayer === 0) $('#in-name').value = n;
+  applyLooksEverywhere();
+  if (custReturn === 'menu-room') renderRoom();
+  show(custReturn === 'menu-custom' ? 'menu-main' : custReturn);
+}
+
+function setLook(l) {
+  looks[custPlayer] = Looks.cleanLook(l, Looks.DEFAULT_LOOKS[custPlayer]);
+  saveLooks();
+  applyLooksEverywhere();
+  renderCustomise();
+}
+
+// Push the current looks/names into a running game, the map, and an online partner.
+let lastLookSent = '';
+function applyLooksEverywhere() {
+  map.looks = looks;
+  if (world) {
+    const names = playerNames();
+    if (mode === 'solo' || mode === 'local') world.players.forEach((p, i) => { p.look = looks[i]; p.name = names[i]; });
+    else { const me = world.players[mode === 'host' ? 0 : 1]; if (me) { me.look = looks[0]; me.name = myName(); } }
+  }
+  if (link && link.open) {
+    const msg = { t: 'look', name: myName(), look: looks[0] };
+    const key = JSON.stringify(msg);
+    if (key !== lastLookSent) { lastLookSent = key; link.send(msg, true); }
+  }
+}
+
+function renderCustomise() {
+  const l = looks[custPlayer];
+  $('#cust-tab-1').setAttribute('aria-selected', String(custPlayer === 0));
+  $('#cust-tab-2').setAttribute('aria-selected', String(custPlayer === 1));
+  $('#cust-tab-1').setAttribute('aria-checked', String(custPlayer === 0));
+  $('#cust-tab-2').setAttribute('aria-checked', String(custPlayer === 1));
+  $('#cust-who').textContent = custPlayer === 0
+    ? 'Player 1 is you: this is how you look solo and to your partner online.'
+    : 'Player 2 is the second player in local co-op on this device.';
+  $('#cust-name').value = playerNames()[custPlayer] === (custPlayer ? 'P2' : 'P1') && !store.get(custPlayer ? 'rage-name2' : 'rage-name') ? '' : playerNames()[custPlayer];
+  $('#cust-name').placeholder = custPlayer ? 'P2' : 'P1';
+
+  // colour swatches
+  const colors = $('#cust-colors');
+  colors.replaceChildren(...Looks.COLORS.map((c, i) => {
+    const b = document.createElement('button');
+    b.style.background = c.body;
+    b.title = c.name;
+    b.setAttribute('aria-label', c.name);
+    b.setAttribute('aria-pressed', String(!l.px && l.c === i));
+    b.addEventListener('click', () => { sfx('select'); setLook({ ...l, c: i }); });
+    return b;
+  }));
+  // faces and hats, each with a mini preview of what you'd look like
+  const chip = (label, look, pressed, onPick) => {
+    const b = document.createElement('button');
+    const cv = document.createElement('canvas');
+    cv.width = 24; cv.height = 33;
+    drawLookPreview(cv.getContext('2d'), look, 0, 3);
+    const t = document.createElement('span');
+    t.textContent = label;
+    b.append(cv, t);
+    b.setAttribute('aria-pressed', String(pressed));
+    b.addEventListener('click', () => { sfx('select'); onPick(); });
+    return b;
+  };
+  $('#cust-faces').replaceChildren(...Looks.FACES.map((name, i) => chip(name, { ...l, px: undefined, f: i }, !l.px && l.f === i, () => setLook({ ...l, f: i, px: undefined }))));
+  $('#cust-hats').replaceChildren(...Looks.HATS.map((name, i) => chip(name, { ...l, h: i }, l.h === i, () => setLook({ ...l, h: i }))));
+  $('#cust-presets').classList.toggle('dim', !!l.px);
+
+  // paint mode
+  const painting = !!l.px && paintOpen;
+  $('#paint-area').hidden = !painting;
+  $('#btn-paint').hidden = painting;
+  $('#btn-paint-clear').hidden = !painting;
+  $('#btn-paint-off').hidden = !l.px;
+  if (painting) renderPaint();
+  drawCustPreview();
+}
+
+function renderPaint() {
+  const l = looks[custPlayer];
+  const grid = $('#paint-grid');
+  grid.replaceChildren(...[...l.px].map((ch, i) => {
+    const d = document.createElement('div');
+    d.dataset.i = String(i);
+    const col = Looks.PAINT[parseInt(ch, 16)];
+    if (col) d.style.background = col;
+    return d;
+  }));
+  $('#paint-pal').replaceChildren(...Looks.PAINT.map((col, i) => {
+    const b = document.createElement('button');
+    if (col) b.style.background = col; else { b.className = 'eraser'; b.title = 'Eraser'; }
+    b.setAttribute('aria-label', col ? `Colour ${i}` : 'Eraser');
+    b.setAttribute('aria-pressed', String(paintColor === i));
+    b.addEventListener('click', () => { paintColor = i; renderPaint(); });
+    return b;
+  }));
+}
+
+// Click or drag (mouse, pen or finger) to paint.
+let painting = false;
+function paintAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el || !el.dataset || el.parentElement !== $('#paint-grid')) return;
+  const i = Number(el.dataset.i);
+  const l = looks[custPlayer];
+  if (!l.px || !(i >= 0 && i < 56)) return;
+  const ch = paintColor.toString(16);
+  if (l.px[i] === ch) return;
+  l.px = l.px.slice(0, i) + ch + l.px.slice(i + 1);
+  el.style.background = Looks.PAINT[paintColor] || '';
+  drawCustPreview();
+}
+$('#paint-grid').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  painting = true;
+  try { $('#paint-grid').setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  paintAt(e.clientX, e.clientY);
+});
+$('#paint-grid').addEventListener('pointermove', (e) => { if (painting) paintAt(e.clientX, e.clientY); });
+const endPaint = () => { if (!painting) return; painting = false; setLook(looks[custPlayer]); };
+$('#paint-grid').addEventListener('pointerup', endPaint);
+$('#paint-grid').addEventListener('pointercancel', endPaint);
+
+$('#cust-name').addEventListener('input', () => {
+  const n = sanitizeName($('#cust-name').value);
+  if (!$('#cust-name').value.trim()) store.set(custPlayer === 0 ? 'rage-name' : 'rage-name2', '');
+  else store.set(custPlayer === 0 ? 'rage-name' : 'rage-name2', n);
+  if (custPlayer === 0) $('#in-name').value = $('#cust-name').value.trim() ? n : '';
+  applyLooksEverywhere();
+});
+
+function drawCustPreview() {
+  const cv = $('#cust-preview');
+  const c = cv.getContext('2d');
+  c.clearRect(0, 0, cv.width, cv.height);
+  drawLookPreview(c, looks[custPlayer], [0, 1, 0, 2][(custFrame >> 3) & 3], 11);
+}
+
 // ---------- profiles / shared progress ----------
 const profileName = () => (profile === 'solo' ? 'Solo' : `Team ${profile}`);
 
@@ -684,7 +866,7 @@ function attachLink(l, isHost) {
   l.onMessage = (m) => onNet(m, isHost);
   l.onOpen = () => {
     if (sig) { sig.close(); sig = null; }
-    l.send({ t: 'hello', v: PROTOCOL_VERSION, name: myName() }, true);
+    l.send({ t: 'hello', v: PROTOCOL_VERSION, name: myName(), look: looks[0] }, true);
     setStatus('#online-status', 'Connected! Saying hello…');
     setStatus('#manual-status', 'Connected! Saying hello…');
   };
@@ -720,6 +902,7 @@ function onNet(m, isHost) {
     if (m.v !== PROTOCOL_VERSION) { toast('Version mismatch — both players need the same version'); cancelOnline(); return; }
     if (world || currentPanel === 'menu-room') return; // already together
     partnerName = m.name;
+    partnerLook = m.look;
     roomIsHost = isHost;
     joinTeamWith(partnerName);
     sendProgress();
@@ -728,6 +911,15 @@ function onNet(m, isHost) {
   }
   if (m.t === 'bye') { link && link.close(); return; }
   if (m.t === 'share') { receiveShare(m.code); return; }
+  if (m.t === 'look') {
+    // Only the visible name changes; the team you're saving to stays the same.
+    partnerLook = m.look;
+    const p = world && world.players[isHost ? 1 : 0];
+    if (p) { p.look = m.look; p.name = m.name; }
+    roomPartnerLabel = m.name;
+    if (currentPanel === 'menu-room') renderRoom();
+    return;
+  }
   if (m.t === 'prog') { receiveProgress(m); if (currentPanel === 'menu-room') renderRoom(); return; }
   if (!world) {
     if (m.t === 'start' && !isHost && currentPanel === 'menu-room') {
@@ -777,13 +969,15 @@ let roomIsHost = false;
 let lastShare = -Infinity;
 
 function openRoom() {
+  roomPartnerLabel = null;
   setStatus('#room-status', '');
   renderRoom();
   show('menu-room');
 }
 
+let roomPartnerLabel = null;
 function renderRoom() {
-  $('#room-who').textContent = `${myName()} + ${partnerName} · connected`;
+  $('#room-who').textContent = `${myName()} + ${roomPartnerLabel || partnerName} · connected`;
   const u = save.unlocked;
   $('#room-progress').textContent = `${profileName()}: up to World ${LEVELS[u].world + 1} (${shortLabel(u)})`;
   renderWorldPick();
@@ -1062,6 +1256,7 @@ function frame(now) {
   acc += Math.min(100, now - last);
   last = now;
   while (acc >= DT) { step(); acc -= DT; }
+  if (currentPanel === 'menu-custom') { custFrame++; if (custFrame % 8 === 0) drawCustPreview(); }
   if (currentPanel === 'menu-levels') map.draw(ctx);
   else if (world) world.render(ctx);
   else drawTitle();
@@ -1083,6 +1278,7 @@ async function showLanAddress() {
   } catch { /* static hosting: no server, nothing to show */ }
 }
 
+map.looks = looks;
 show('menu-main');
 updateTouchUi();
 updateFullscreenUi();

@@ -297,3 +297,22 @@ body.touch-on.playing.tb-side #toolbar button { width: 44px; height: 44px; paddi
 .inbox-row .what { flex: 1 1 160px; font-size: 12px; text-transform: none; }
 .inbox-row button { padding: 6px 8px; font-size: 11px; }
 .inbox-empty { margin: 0; font-size: 12px; color: var(--dim); text-transform: none; }
+
+/* Customise screen */
+.cust-top { display: flex; gap: 16px; align-items: center; }
+#cust-preview { width: 88px; height: 121px; image-rendering: pixelated; background: #0a0610; border: 3px solid var(--edge); flex: none; }
+.cust-side { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatches button { width: 34px; height: 34px; padding: 0; box-shadow: 2px 2px 0 #000; }
+.swatches button[aria-pressed="true"] { outline: 3px solid var(--yel); outline-offset: 1px; }
+.swatches button.eraser { background: repeating-conic-gradient(#2a1c3a 0 25%, #120a1a 0 50%) 50% / 10px 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; font-size: 10px; min-width: 56px; }
+.chips button canvas { width: 24px; height: 33px; image-rendering: pixelated; }
+.chips button[aria-pressed="true"] { background: var(--yel); color: #000; border-color: var(--yel); }
+#cust-presets.dim { opacity: 0.4; }
+.paint-grid { display: grid; grid-template-columns: repeat(8, 1fr); width: min(280px, 100%); aspect-ratio: 8 / 7; border: 3px solid var(--edge); touch-action: none; user-select: none; -webkit-user-select: none;
+  background: repeating-conic-gradient(#2a1c3a 0 25%, #1a1026 0 50%) 0 0 / 25% 28.57%; }
+.paint-grid div { border: 1px solid rgba(255, 255, 255, 0.06); }
+#paint-area { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+#paint-area[hidden] { display: none; }

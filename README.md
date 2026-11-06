@@ -45,6 +45,18 @@ Requires Node 18 or newer. The `public/` folder also works on any static host (G
 
 **Full screen:** starting a game on a phone or tablet goes full screen automatically where the browser allows it. There's also a ⛶ button and an **F** key. On iPhone, Safari doesn't allow web pages to go full screen; instead tap Share → **Add to Home Screen** and open RAGE from the home screen.
 
+### Your character
+
+Main menu → **🎨 Customise character** (also in the pause menu and the online room).
+
+- **Player 1** is you: your look solo and to your partner online. **Player 2** is the second player in local co-op.
+- **Display name:** shown above your character and to your partner online.
+- **Colour, face and hat:** 12 colours, 6 faces (angry, happy, cool, surprised, cyclops, sleepy) and 7 hats (cap, crown, horns, bow, party hat, antenna, or none).
+- **🎨 Paint your own:** draw your character on an 8×7 pixel grid with a 15-colour palette (drag to paint, also on touchscreens). Legs and the running animation are added for you, and hats still work on top.
+- **🎲 Randomise** if you can't decide.
+
+Changes save on the device and apply straight away, even mid-game. Online, your partner sees your new look and name within a second. Looks are sent as a few small numbers and palette indexes, and drawn only from the game's built-in colours, so a partner can't send anything harmful.
+
 ### Menus, saving and the world map
 
 - **Autosave:** your run (stage, deaths, time) saves automatically on every stage change, every death, when you pause, and when you leave the page. **Continue** on the main menu picks up where you left off.
@@ -151,6 +163,7 @@ public/            the game (works from any static host)
   js/protocol.js   message validation (shared with the server)
   js/save.js       autosave, profiles/teams, unlocks, best times, progress codes
   js/map.js        the overworld map
+  js/looks.js      character looks (colours, faces, hats, painted sprites)
 server/server.js   static files + lobby, zero dependencies
 test/              node:test suites
 ```

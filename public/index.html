@@ -38,6 +38,7 @@
         <p class="tag">a perfectly fair platformer</p>
         <p class="welcome">Welcome Asia!</p>
         <button data-go="profiles" id="btn-profile" class="profile-btn">Profile: Solo</button>
+        <button data-go="customise" id="btn-customise">🎨 Customise character</button>
         <button data-go="continue" id="btn-continue" class="primary" hidden>Continue</button>
         <button data-go="new-solo">New game</button>
         <button data-go="levels">Level select</button>
@@ -68,11 +69,50 @@
         <button data-go="reset-progress" class="danger" title="Reset this profile's progress">Reset</button>
       </section>
 
+      <section id="menu-custom" class="panel wide" hidden>
+        <h2>Customise</h2>
+        <div class="seg row" role="tablist" aria-label="Which player">
+          <button data-go="cust-p1" id="cust-tab-1" role="tab">Player 1</button>
+          <button data-go="cust-p2" id="cust-tab-2" role="tab">Player 2</button>
+        </div>
+        <p class="note" id="cust-who"></p>
+        <div class="cust-top">
+          <canvas id="cust-preview" width="88" height="121" aria-label="Character preview"></canvas>
+          <div class="cust-side">
+            <label>Display name
+              <input id="cust-name" maxlength="12" autocomplete="off" spellcheck="false" placeholder="PLAYER">
+            </label>
+            <button data-go="cust-random">🎲 Randomise</button>
+          </div>
+        </div>
+        <div id="cust-presets">
+          <h3 class="sub">Colour</h3>
+          <div id="cust-colors" class="swatches"></div>
+          <h3 class="sub">Face</h3>
+          <div id="cust-faces" class="chips"></div>
+        </div>
+        <h3 class="sub">Hat</h3>
+        <div id="cust-hats" class="chips"></div>
+        <h3 class="sub">Paint your own</h3>
+        <p class="note" id="paint-note">Draw your character pixel by pixel. Legs and running are added for you.</p>
+        <div id="paint-area" hidden>
+          <div id="paint-grid" class="paint-grid" aria-label="Paint grid"></div>
+          <div id="paint-pal" class="swatches"></div>
+        </div>
+        <div class="row">
+          <button data-go="paint-start" id="btn-paint">🎨 Paint your own</button>
+          <button data-go="paint-clear" id="btn-paint-clear" hidden>Clear</button>
+          <button data-go="paint-off" id="btn-paint-off" hidden>Use presets</button>
+        </div>
+        <button data-go="cust-done" class="primary">Done</button>
+      </section>
+
       <section id="menu-room" class="panel" hidden>
         <h2>Room</h2>
         <p id="room-who" class="room-who"></p>
         <p id="room-progress" class="note"></p>
         <button data-go="share-progress" id="btn-share">📤 Share my progress</button>
+        <button data-go="customise">🎨 Customise character</button>
         <p class="note">Sends your own progress to your partner. They can add it to your team with one tap.</p>
         <h3 class="sub">Received progress</h3>
         <div id="room-inbox" class="plist"></div>
@@ -187,6 +227,7 @@
         <button data-go="restart" class="offline-only">Restart stage</button>
         <button data-go="levels" class="offline-only">Level select</button>
         <button data-go="share-progress" class="online-only">📤 Share my progress</button>
+        <button data-go="customise">🎨 Customise character</button>
         <button data-go="mute" class="mute-btn">Sound: on</button>
         <button data-go="touch-mode" class="touch-btn">Touch controls: auto</button>
         <button data-go="quit">Home</button>

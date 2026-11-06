@@ -52,7 +52,7 @@ class Player {
 }
 
 export class World {
-  constructor({ mode, names = [], onEvent, startLevel = 0, deaths = [0, 0], time = 0 }) {
+  constructor({ mode, names = [], looks = [], onEvent, startLevel = 0, deaths = [0, 0], time = 0 }) {
     this.mode = mode;
     this.auth = mode !== 'guest';
     this.onEvent = onEvent || (() => {});
@@ -61,6 +61,7 @@ export class World {
     for (let i = 0; i < count; i++) {
       const p = new Player(i, names[i] || `P${i + 1}`);
       p.deaths = deaths[i] || 0;
+      if (looks[i]) p.look = looks[i];
       this.players.push(p);
     }
     this.localIdx = mode === 'guest' ? [1] : mode === 'host' ? [0] : mode === 'local' ? [0, 1] : [0];
@@ -413,7 +414,7 @@ export class World {
     p.deaths++;
     this.shake = 8;
     sfx('die');
-    this.burst(p.x + 3, p.y + 4, S.playerColor(p.idx), 18);
+    this.burst(p.x + 3, p.y + 4, S.playerColor(p), 18);
     this.burst(p.x + 3, p.y + 4, '#f4f0ff', 6);
     if (this.isLocal(p)) this.taunt = { text: TAUNTS[(Math.random() * TAUNTS.length) | 0], t: 60, idx: p.idx };
     this.banner = 0;
@@ -843,7 +844,7 @@ export class World {
     if (!p.synced || (wasDead && !p.dead)) { p.x = m.x; p.y = m.y; }
     p.synced = true;
     if (!wasDead && p.dead) {
-      this.burst(p.x + 3, p.y + 4, S.playerColor(p.idx), 18);
+      this.burst(p.x + 3, p.y + 4, S.playerColor(p), 18);
       sfx('die');
       this.checkAllDead();
     }
@@ -960,7 +961,7 @@ export class World {
         const other = this.players[1 - p.idx];
         const crowded = other && other.present && !other.dead && Math.abs(other.x - p.x) < 28 && Math.abs(other.y - p.y) < 12;
         const lift = crowded && p.idx === 1 ? 7 : 0;
-        drawTextCentered(ctx, p.name.slice(0, 8), p.x + 3, p.y - 7 - lift, S.playerColor(p.idx));
+        drawTextCentered(ctx, p.name.slice(0, 8), p.x + 3, p.y - 7 - (p.look && p.look.h ? 3 : 0) - lift, S.playerColor(p));
       }
     }
 
@@ -1030,7 +1031,7 @@ export class World {
       const secs = Math.floor(this.time / 60);
       drawTextCentered(ctx, `TIME ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`, W / 2, 74, '#ffffff', 2);
       this.players.forEach((p, i) => {
-        drawTextCentered(ctx, `${p.name}: ${p.deaths} DEATHS`, W / 2, 96 + i * 14, S.playerColor(p.idx), 2);
+        drawTextCentered(ctx, `${p.name}: ${p.deaths} DEATHS`, W / 2, 96 + i * 14, S.playerColor(p), 2);
       });
       drawTextCentered(ctx, this.worldClear ? 'IT GETS WORSE.' : 'WORTH IT?', W / 2, 132, '#c8c0d8', 1);
       drawTextCentered(ctx, this.worldClear && this.continueNext ? `PRESS ENTER FOR WORLD ${this.worldClear.nextWorld + 1}` : 'PRESS ENTER', W / 2, 150, '#5fd068', 1);

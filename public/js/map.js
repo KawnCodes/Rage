@@ -250,9 +250,10 @@ export class MapScreen {
       const anim = this.walk ? 1 + ((this.frame >> 3) & 1) : 0;
       const yOff = isBossLevel(this.cursor) ? 20 : 12;
       const players = this.mode === 'local' ? [0, 1] : [0];
+      const looks = this.looks || [];
       players.forEach((idx, k) => {
         const off = players.length > 1 ? (k === 0 ? -5 : 5) : 0;
-        S.drawPlayer(ctx, { idx, anim, f: facing, x: pos.x - 3 + off, y: pos.y - yOff - bob });
+        S.drawPlayer(ctx, { idx, look: looks[idx], anim, f: facing, x: pos.x - 3 + off, y: pos.y - yOff - bob });
       });
     }
 

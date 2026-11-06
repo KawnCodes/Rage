@@ -7,7 +7,9 @@
 // with numbers clamped to sane ranges. Unknown fields are dropped. Nothing
 // received is ever passed to innerHTML / eval / URLs.
 
-export const PROTOCOL_VERSION = 5;
+import { cleanLook, DEFAULT_LOOKS } from './looks.js';
+
+export const PROTOCOL_VERSION = 6;
 export const MAX_MESSAGE_BYTES = 8192;
 export const MAX_SDP_LENGTH = 16000;
 export const MAX_SIGNAL_BYTES = 20000;
@@ -70,8 +72,10 @@ export function decode(raw) {
     case 'hello': {
       const v = int(m.v, 0, 1000);
       if (v === null) return null;
-      return { t: 'hello', v, name: sanitizeName(m.name) };
+      return { t: 'hello', v, name: sanitizeName(m.name), look: cleanLook(m.look, DEFAULT_LOOKS[1]) };
     }
+    case 'look': // partner changed their name or character
+      return { t: 'look', name: sanitizeName(m.name), look: cleanLook(m.look, DEFAULT_LOOKS[1]) };
     case 'p': {
       const x = num(m.x, ...POS), y = num(m.y, ...POS);
       const vx = num(m.vx, ...VEL), vy = num(m.vy, ...VEL);
