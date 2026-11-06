@@ -17,6 +17,7 @@
 //    so other websites can't reach this server through DNS rebinding when it's
 //    open to your local network.
 import http from 'node:http';
+import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -43,7 +44,7 @@ const MIME = {
 const CSP = [
   "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' data:",
   "connect-src 'self'", "font-src 'self'", "media-src 'none'", "object-src 'none'",
-  "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'", "worker-src 'none'",
+  "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'", "worker-src 'self'", "manifest-src 'self'",
 ].join('; ');
 
 const LIMITS = {
@@ -361,7 +362,9 @@ export function createServer(opts = {}) {
     return res.end(req.method === 'HEAD' ? undefined : f.body);
   }
 
-  const server = http.createServer((req, res) => {
+  // HTTPS when given a certificate (needed for offline play on phones over your Wi-Fi).
+  const make = options.tls ? (h) => https.createServer(options.tls, h) : (h) => http.createServer(h);
+  const server = make((req, res) => {
     baseHeaders(res, options, req);
     if (!hostAllowed(req.headers.host, allowedHosts)) {
       res.writeHead(421, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -398,7 +401,8 @@ export function createServer(opts = {}) {
   server.on('listening', () => {
     const a = server.address();
     const wildcard = a && (a.address === '0.0.0.0' || a.address === '::');
-    lanUrls = wildcard ? lanAddresses().map((ip) => `http://${ip}:${a.port}`) : [];
+    const scheme = options.tls ? 'https' : 'http';
+    lanUrls = wildcard ? lanAddresses().map((ip) => `${scheme}://${ip}:${a.port}`) : [];
   });
   server.on('close', () => {
     clearInterval(sweeper);
@@ -413,7 +417,19 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const port = Number(process.env.PORT) || 8080;
   // Default: reachable from other devices on your local network. HOST=127.0.0.1 for this machine only.
   const host = process.argv.includes('--local') ? '127.0.0.1' : process.env.HOST || '0.0.0.0';
+  // Optional HTTPS: HTTPS_CERT=cert.pem HTTPS_KEY=key.pem npm start
+  let tls = null;
+  if (process.env.HTTPS_CERT && process.env.HTTPS_KEY) {
+    try {
+      tls = { cert: fs.readFileSync(process.env.HTTPS_CERT), key: fs.readFileSync(process.env.HTTPS_KEY) };
+    } catch (e) {
+      console.error(`Could not read the HTTPS certificate or key: ${e.message}`);
+      process.exit(1);
+    }
+  }
+  const scheme = tls ? 'https' : 'http';
   const server = createServer({
+    tls,
     trustProxy: process.env.TRUST_PROXY === '1',
     hsts: process.env.HSTS === '1',
     allowedHosts: (process.env.ALLOWED_HOSTS || '').split(','),
@@ -425,11 +441,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   server.listen(port, host, () => {
     console.log('');
     console.log('  RAGE is running!');
-    console.log(`  On this computer:   http://localhost:${port}`);
+    console.log(`  On this computer:   ${scheme}://localhost:${port}`);
     if (host === '0.0.0.0' || host === '::') {
       const ips = lanAddresses();
       if (ips.length) {
-        console.log('  On your Wi-Fi/LAN:  ' + ips.map((ip) => `http://${ip}:${port}`).join('\n                      '));
+        console.log('  On your Wi-Fi/LAN:  ' + ips.map((ip) => `${scheme}://${ip}:${port}`).join('\n                      '));
+        if (!tls) console.log('  (offline play on phones needs HTTPS: see "Play offline" in the README)');
         console.log('  (open that address on your phone, tablet or a friend\'s computer on the same network)');
       } else {
         console.log('  No network connection found, so other devices can\'t reach it right now.');

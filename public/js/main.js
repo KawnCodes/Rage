@@ -283,6 +283,11 @@ const actions = {
   'manual-host': () => manualHost(),
   'manual-guest': () => { cancelOnline(); resetManualUi(); $('#manual-guest').hidden = false; },
   'copy-offer': () => copy('#mh-offer'),
+  'share-offer': () => shareText('#mh-offer', 'RAGE host code'),
+  'share-answer': () => shareText('#mg-answer', 'RAGE reply code'),
+  'paste-answer': () => pasteInto('#mh-answer'),
+  'paste-offer': () => pasteInto('#mg-offer'),
+  'apply-update': () => applyUpdate(),
   'copy-answer': () => copy('#mg-answer'),
   'mh-connect': () => manualHostConnect(),
   'mg-make': () => manualGuestAnswer(),
@@ -321,6 +326,25 @@ window.addEventListener('gamepadconnected', (e) => {
 window.addEventListener('gamepaddisconnected', () => {
   if (!$('#menu-controls').hidden) renderPads();
 });
+
+// Share sheet (AirDrop, Messages…) where the device has one; otherwise copy.
+async function shareText(sel, title) {
+  const text = $(sel).value;
+  if (!text) { toast('Make the code first', 1500); return; }
+  if (navigator.share) {
+    try { await navigator.share({ title, text }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  copy(sel);
+}
+
+async function pasteInto(sel) {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (t) { $(sel).value = t.trim().slice(0, 40000); return; }
+  } catch { /* not allowed here */ }
+  $(sel).focus();
+  toast('Long-press the box and choose Paste', 2500);
+}
 
 async function copy(sel) {
   const el = $(sel);
@@ -1287,7 +1311,7 @@ async function showLanAddress() {
     const r = await fetch('api/lan', { cache: 'no-store', credentials: 'omit' });
     if (!r.ok) return;
     const j = await r.json();
-    const urls = Array.isArray(j.urls) ? j.urls.filter((u) => typeof u === 'string' && /^http:\/\/[0-9.]{7,15}:\d{1,5}$/.test(u)) : [];
+    const urls = Array.isArray(j.urls) ? j.urls.filter((u) => typeof u === 'string' && /^https?:\/\/[0-9.]{7,15}:\d{1,5}$/.test(u)) : [];
     if (!urls.length) return; // local-only mode, or static hosting
     for (const el of document.querySelectorAll('.lan-line')) {
       el.textContent = `Same Wi-Fi? Other devices can play at ${urls[0]}`;
@@ -1296,8 +1320,46 @@ async function showLanAddress() {
   } catch { /* static hosting: no server, nothing to show */ }
 }
 
+// ---------- offline play + updates ----------
+// The service worker (sw.js) keeps the whole game on the device after the first visit.
+// When the game on the server changes, the next online visit downloads the new version
+// in the background, and the main menu offers "Update ready".
+let updateReady = false;
+function showUpdateReady() {
+  updateReady = true;
+  $('#btn-update').hidden = false;
+  if (!world) toast('A new version of RAGE has downloaded', 3000);
+}
+function applyUpdate() {
+  if (world) autosave();
+  location.reload();
+}
+async function setupOffline() {
+  const line = $('#offline-line');
+  if (!('serviceWorker' in navigator)) return;
+  if (!window.isSecureContext) {
+    line.textContent = 'Offline play needs HTTPS (or localhost): see the README.';
+    line.hidden = !isTouchDevice();
+    return;
+  }
+  try {
+    const hadController = !!navigator.serviceWorker.controller;
+    const reg = await navigator.serviceWorker.register('sw.js', { scope: './' });
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) showUpdateReady(); });
+    const ready = await navigator.serviceWorker.ready;
+    line.textContent = 'Saved on this device: works offline ✓';
+    line.hidden = false;
+    // Check for a new version whenever the game comes back to the foreground, and every 30 minutes.
+    const check = () => { if (navigator.onLine) ready.update().catch(() => {}); };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    setInterval(check, 30 * 60 * 1000);
+    void reg;
+  } catch { /* offline caching unavailable: the game still works online */ }
+}
+
 map.looks = looks;
 show('menu-main');
+setupOffline();
 updateTouchUi();
 updateFullscreenUi();
 showLanAddress();

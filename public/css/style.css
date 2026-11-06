@@ -346,3 +346,9 @@ body.touch-on.playing.tb-side #toolbar button { width: 44px; height: 44px; paddi
   max-width: 27vw;
 }
 .mapbar.mini button { padding: 5px 6px; font-size: 10px; letter-spacing: 0; }
+
+.howto { font-size: 12px; text-transform: none; border: 2px dashed var(--edge); padding: 6px 10px; }
+.howto summary { cursor: pointer; color: var(--yel); font-weight: bold; }
+.howto ol { margin: 6px 0; padding-left: 18px; line-height: 1.5; color: var(--text); }
+.update-btn { background: var(--grn); color: #000; border-color: var(--yel); }
+.update-btn:hover, .update-btn:focus-visible { background: #8af098; color: #000; }

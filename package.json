@@ -5,10 +5,15 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
+    "prestart": "node scripts/build-sw.mjs",
     "start": "node server/server.js",
+    "prestart:local": "node scripts/build-sw.mjs",
     "start:local": "node server/server.js --local",
+    "sw": "node scripts/build-sw.mjs",
     "test": "node --test test/*.test.js"
   }
 }

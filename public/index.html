@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <!-- Strict CSP for static hosting; server/server.js also sends it as a header. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'self'; manifest-src 'self'">
   <meta name="referrer" content="no-referrer">
   <title>RAGE</title>
   <link rel="icon" href="icons/icon-192.png">
@@ -39,6 +39,7 @@
         <p class="welcome">Welcome Asia!</p>
         <button data-go="profiles" id="btn-profile" class="profile-btn">Profile: Solo</button>
         <button data-go="customise" id="btn-customise">🎨 Customise character</button>
+        <button data-go="apply-update" id="btn-update" class="update-btn" hidden>🔄 Update ready: tap to restart</button>
         <button data-go="continue" id="btn-continue" class="primary" hidden>Continue</button>
         <button data-go="new-solo">New game</button>
         <button data-go="levels">Level select</button>
@@ -56,6 +57,7 @@
         <p id="mp-note" class="note center" hidden>🔒 2 player modes unlock in World 2. Beat The Grudge first.</p>
         <p id="coop-note" class="note center" hidden>World 3 is co-op only: play it in Local 2 player or Online.</p>
         <p id="stats-line" class="note center"></p>
+        <p id="offline-line" class="note center" hidden></p>
         <p class="lan-line note center" hidden></p>
       </section>
 
@@ -169,7 +171,18 @@
 
       <section id="menu-manual" class="panel" hidden>
         <h2>Manual connect</h2>
-        <p class="note">Swap two codes with your friend (chat, email…). Codes contain your network addresses, so only share them with people you trust.</p>
+        <p class="note">Swap two codes with your friend: AirDrop, Messages, anything. Codes contain your network addresses, so only share them with people you trust.</p>
+        <details class="howto">
+          <summary>📱 Two iPhones, no internet?</summary>
+          <ol>
+            <li>Both phones need RAGE saved for offline play (open it once while online, then Share → Add to Home Screen).</li>
+            <li>Phone A: Settings → Personal Hotspot → turn on. Phone B: join Phone A's Wi-Fi. (Or put both on the same Wi-Fi.)</li>
+            <li>Phone A taps <b>I'm hosting</b>, then <b>Share</b> → AirDrop to Phone B.</li>
+            <li>Phone B taps <b>I'm joining</b>, pastes the code, taps <b>Make reply code</b>, then <b>Share</b> → AirDrop back.</li>
+            <li>Phone A pastes the reply and taps <b>Connect</b>.</li>
+          </ol>
+          <p class="note">AirDrop uses Bluetooth to find the other phone, so this works with no internet at all. The game itself then talks over the hotspot's Wi-Fi.</p>
+        </details>
         <div class="row">
           <button data-go="manual-host">I'm hosting</button>
           <button data-go="manual-guest">I'm joining</button>
@@ -177,18 +190,30 @@
         <div id="manual-host" hidden>
           <p class="step">1. Send this code to your friend:</p>
           <textarea id="mh-offer" readonly rows="3" aria-label="Your host code"></textarea>
-          <button data-go="copy-offer">Copy</button>
+          <div class="row">
+            <button data-go="share-offer" class="share-btn">Share</button>
+            <button data-go="copy-offer">Copy</button>
+          </div>
           <p class="step">2. Paste their reply code:</p>
           <textarea id="mh-answer" rows="3" aria-label="Reply code"></textarea>
-          <button data-go="mh-connect">Connect</button>
+          <div class="row">
+            <button data-go="paste-answer" class="paste-btn">Paste</button>
+            <button data-go="mh-connect">Connect</button>
+          </div>
         </div>
         <div id="manual-guest" hidden>
           <p class="step">1. Paste the host's code:</p>
           <textarea id="mg-offer" rows="3" aria-label="Host code"></textarea>
-          <button data-go="mg-make">Make reply code</button>
+          <div class="row">
+            <button data-go="paste-offer" class="paste-btn">Paste</button>
+            <button data-go="mg-make">Make reply code</button>
+          </div>
           <p class="step">2. Send this reply back:</p>
           <textarea id="mg-answer" readonly rows="3" aria-label="Your reply code"></textarea>
-          <button data-go="copy-answer">Copy</button>
+          <div class="row">
+            <button data-go="share-answer" class="share-btn">Share</button>
+            <button data-go="copy-answer">Copy</button>
+          </div>
         </div>
         <p id="manual-status" class="status" role="status"></p>
         <button data-go="back-online">Back</button>
