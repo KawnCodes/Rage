@@ -44,15 +44,6 @@ Requires Node 18 or newer. The `public/` folder also works on any static host (G
 
 **Full screen:** starting a game on a phone or tablet goes full screen automatically where the browser allows it. There's also a ⛶ button and an **F** key. On iPhone, Safari doesn't allow web pages to go full screen; instead tap Share → **Add to Home Screen** and open RAGE from the home screen.
 
-**Cheat codes:** Main menu → **Cheat codes**.
-| Code | Does |
-|---|---|
-| `FRIENDS` | Unlocks multiplayer (World 2, Local 2 player and Online) |
-| `HUZZAR` | Unlocks every world and stage |
-| `ASIA` | Unlocks everything too, with a personal hello |
-
-Cheats mark your save with "cheats used" on the main menu.
-
 ### Menus, saving and level select
 
 - **Autosave:** your run (stage, deaths, time) saves automatically on every stage change, every death, when you pause, and when you leave the page. **Continue** on the main menu picks up where you left off.

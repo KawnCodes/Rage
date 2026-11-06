@@ -301,25 +301,34 @@ function newRun(m, startLevel = 0) {
 }
 
 // ---------- cheat codes ----------
-// Plain on purpose: it's a single-player unlock stored in your own browser.
+// Codes are stored only as salted hashes, so they can't be read from the source.
+function cheatHash(str, seed = 0x5241) { // cyrb53 (public domain)
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+const unlockAll = (s) => { s.unlocked = LEVELS.length - 1; };
 const CHEATS = {
-  FRIENDS: {
-    msg: 'Multiplayer unlocked! World 2, Local 2 player and Online are open.',
+  '2fzw1xhxgmj': {
+    msg: () => 'Multiplayer unlocked! World 2, Local 2 player and Online are open.',
     apply: (s) => { s.unlocked = Math.max(s.unlocked, MULTIPLAYER_START); },
   },
-  HUZZAR: {
-    msg: 'HUZZAR!! Every world and stage is unlocked.',
-    apply: (s) => { s.unlocked = LEVELS.length - 1; },
-  },
-  ASIA: {
-    msg: 'Hi Asia! Every world and stage is unlocked, just for you.',
-    apply: (s) => { s.unlocked = LEVELS.length - 1; },
+  '17fhowd5710': { msg: () => 'Every world and stage is unlocked!', apply: unlockAll },
+  pva0ezqt6: {
+    msg: (code) => `Hi ${code[0]}${code.slice(1).toLowerCase()}! Everything is unlocked, just for you.`,
+    apply: unlockAll,
   },
 };
 
 function enterCheat(raw) {
   const code = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
-  const c = CHEATS[code];
+  const c = code ? CHEATS[cheatHash(`rage:${code}`)] : null;
   if (!c) {
     sfx('die');
     setStatus('#cheat-status', code ? 'Nope. That is not a code.' : 'Type a code first.', true);
@@ -329,7 +338,7 @@ function enterCheat(raw) {
   save.cheated = true;
   Save.store(save);
   sfx('huzzar');
-  setStatus('#cheat-status', c.msg);
+  setStatus('#cheat-status', c.msg(code));
   $('#in-cheat').value = '';
 }
 $('#in-cheat').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); enterCheat(e.target.value); } });
