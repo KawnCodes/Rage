@@ -155,14 +155,20 @@
           <input id="in-name" maxlength="12" autocomplete="off" spellcheck="false" placeholder="PLAYER">
         </label>
         <div id="server-box">
-          <button data-go="host">Host a room</button>
+          <button data-go="quick" class="primary big">⚡ Quick play</button>
+          <p class="note">Pairs you with the next person who taps Quick play here. Nothing to type.</p>
+          <button data-go="host">🔗 Invite a friend</button>
+          <div id="invite-box" hidden>
+            <input id="invite-link" readonly aria-label="Invite link">
+            <button data-go="share-invite">Send link again</button>
+          </div>
           <div class="row">
             <input id="in-code" maxlength="6" autocomplete="off" spellcheck="false" placeholder="ROOM CODE" aria-label="Room code">
             <button data-go="join">Join</button>
           </div>
         </div>
         <p class="lan-line note" hidden></p>
-        <p id="no-server" class="note" hidden>No lobby server found (static hosting). Use manual connect below, or run <code>npm start</code>.</p>
+        <p id="no-server" class="note" hidden>Quick play and invite links need the RAGE server (<code>npm start</code> on your computer, same Wi-Fi). Without it, use Manual connect below.</p>
         <p id="room-display" class="code-big" hidden></p>
         <p id="online-status" class="status" role="status"></p>
         <button data-go="manual">Manual connect (no server)</button>

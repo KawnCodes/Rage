@@ -279,6 +279,8 @@ const actions = {
   'back-online': () => { cancelOnline(); resetManualUi(); show('menu-online'); checkServer(); },
   host: () => hostRoom(),
   join: () => joinRoom(),
+  quick: () => quickPlay(),
+  'share-invite': () => shareInvite($('#invite-link').value),
   manual: () => { cancelOnline(); resetManualUi(); show('menu-manual'); },
   'manual-host': () => manualHost(),
   'manual-guest': () => { cancelOnline(); resetManualUi(); $('#manual-guest').hidden = false; },
@@ -900,6 +902,7 @@ function cancelOnline() {
   if (sig) { sig.close(); sig = null; }
   if (link) { const l = link; link = null; l.onClose = () => {}; l.close(); }
   $('#room-display').hidden = true;
+  $('#invite-box').hidden = true;
   setStatus('#online-status', '');
 }
 
@@ -1113,62 +1116,115 @@ async function checkServer() {
   $('#no-server').hidden = serverOk;
 }
 
+// Hook a lobby connection up to a peer link, as host (sends the offer) or guest (answers).
+function wireSignaling(s, isHost) {
+  const l = new PeerLink(isHost);
+  attachLink(l, isHost);
+  l.onIce = (c) => s.send({ kind: 'ice', c }).catch(() => {});
+  s.onError = (e) => setStatus('#online-status', `Lobby error: ${e.message}`, true);
+  s.onSignal = async (m) => {
+    try {
+      if (isHost && m.kind === 'joined') {
+        setStatus('#online-status', 'Friend found: connecting…');
+        await s.send({ kind: 'offer', sdp: await l.createOffer() });
+      } else if (isHost && m.kind === 'answer') await l.acceptAnswer(m.sdp);
+      else if (!isHost && m.kind === 'offer') await s.send({ kind: 'answer', sdp: await l.acceptOffer(m.sdp) });
+      else if (m.kind === 'ice') l.addIce(m.c);
+      else if (m.kind === 'bye' && !l.open) { setStatus('#online-status', 'The other player left.', true); cancelOnline(); }
+    } catch { setStatus('#online-status', 'Handshake failed.', true); }
+  };
+  return l;
+}
+
+// ⚡ One tap: pair with whoever else tapped Quick play on this server.
+async function quickPlay() {
+  cancelOnline();
+  setStatus('#online-status', 'Looking for a player…');
+  const s = new Signaling();
+  sig = s;
+  try {
+    const role = await s.quick();
+    if (sig !== s) return; // cancelled meanwhile
+    wireSignaling(s, role === 'host');
+    s.startPolling();
+    setStatus('#online-status', role === 'host'
+      ? 'Waiting for someone to tap Quick play… (they just need to open RAGE and tap it too)'
+      : 'Found a player: connecting…');
+  } catch (e) {
+    setStatus('#online-status', `Could not start Quick play: ${e.message}`, true);
+    cancelOnline();
+  }
+}
+
+// 🔗 Make a private room and send the link: your friend taps it and joins.
 async function hostRoom() {
   cancelOnline();
   setStatus('#online-status', 'Creating room…');
   const s = new Signaling();
   sig = s;
-  const l = new PeerLink(true);
-  attachLink(l, true);
-  l.onIce = (c) => s.send({ kind: 'ice', c }).catch(() => {});
-  s.onError = (e) => setStatus('#online-status', `Lobby error: ${e.message}`, true);
-  s.onSignal = async (m) => {
-    try {
-      if (m.kind === 'joined') {
-        setStatus('#online-status', 'Friend joined — connecting…');
-        await s.send({ kind: 'offer', sdp: await l.createOffer() });
-      } else if (m.kind === 'answer') await l.acceptAnswer(m.sdp);
-      else if (m.kind === 'ice') l.addIce(m.c);
-      else if (m.kind === 'bye' && !l.open) { setStatus('#online-status', 'Room closed.', true); cancelOnline(); }
-    } catch { setStatus('#online-status', 'Handshake failed.', true); }
-  };
+  wireSignaling(s, true);
   try {
     await s.create();
     const rd = $('#room-display');
     rd.textContent = s.code;
     rd.hidden = false;
-    setStatus('#online-status', 'Share this code. Waiting for a friend…');
+    const url = inviteUrl(s.code);
+    $('#invite-link').value = url;
+    $('#invite-box').hidden = false;
+    setStatus('#online-status', 'Send the link (or the code). Waiting for your friend…');
+    shareInvite(url, true);
   } catch (e) {
     setStatus('#online-status', `Could not create room: ${e.message}`, true);
     cancelOnline();
   }
 }
 
-async function joinRoom() {
-  const code = $('#in-code').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+function inviteUrl(code) {
+  const u = new URL(location.href);
+  u.search = '';
+  u.hash = `join=${code}`;
+  return u.toString();
+}
+
+async function shareInvite(url, auto = false) {
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Play RAGE with me', text: `Join my RAGE game (room ${url.split('join=')[1]}):`, url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  if (!auto) copy('#invite-link');
+}
+
+async function joinRoom(codeArg) {
+  const code = (codeArg || $('#in-code').value).toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!ROOM_CODE_RE.test(code)) { setStatus('#online-status', 'Room codes are 6 letters/numbers.', true); return; }
   cancelOnline();
   setStatus('#online-status', 'Joining…');
   const s = new Signaling();
   sig = s;
-  const l = new PeerLink(false);
-  attachLink(l, false);
-  l.onIce = (c) => s.send({ kind: 'ice', c }).catch(() => {});
-  s.onError = (e) => setStatus('#online-status', `Lobby error: ${e.message}`, true);
-  s.onSignal = async (m) => {
-    try {
-      if (m.kind === 'offer') await s.send({ kind: 'answer', sdp: await l.acceptOffer(m.sdp) });
-      else if (m.kind === 'ice') l.addIce(m.c);
-      else if (m.kind === 'bye' && !l.open) { setStatus('#online-status', 'Host closed the room.', true); cancelOnline(); }
-    } catch { setStatus('#online-status', 'Handshake failed.', true); }
-  };
+  wireSignaling(s, false);
   try {
     await s.join(code);
-    setStatus('#online-status', 'Joined room — connecting…');
+    setStatus('#online-status', 'Joined room: connecting…');
   } catch (e) {
     setStatus('#online-status', `Could not join: ${e.message}`, true);
     cancelOnline();
   }
+}
+
+// Opened from an invite link (…#join=CODE): go straight into that room.
+async function joinFromLink() {
+  const m = /^#join=([A-Za-z0-9]{6})$/.exec(location.hash);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  if (!requireMultiplayer()) return;
+  show('menu-online');
+  await checkServer();
+  if (!serverOk) {
+    setStatus('#online-status', 'This invite needs the RAGE server your friend is running: open the link on the same Wi-Fi.', true);
+    return;
+  }
+  $('#in-code').value = m[1].toUpperCase();
+  joinRoom(m[1]);
 }
 
 // ---------- online: manual copy/paste ----------
@@ -1360,6 +1416,9 @@ async function setupOffline() {
 map.looks = looks;
 show('menu-main');
 setupOffline();
+joinFromLink();
+// A link opened while the game is already open only changes the #… part: catch that too.
+window.addEventListener('hashchange', () => { if (world) quitToMenu(); joinFromLink(); });
 updateTouchUi();
 updateFullscreenUi();
 showLanAddress();

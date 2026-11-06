@@ -352,3 +352,11 @@ body.touch-on.playing.tb-side #toolbar button { width: 44px; height: 44px; paddi
 .howto ol { margin: 6px 0; padding-left: 18px; line-height: 1.5; color: var(--text); }
 .update-btn { background: var(--grn); color: #000; border-color: var(--yel); }
 .update-btn:hover, .update-btn:focus-visible { background: #8af098; color: #000; }
+
+button.big { font-size: 18px; padding: 14px; }
+#invite-box { display: flex; gap: 6px; }
+#invite-box[hidden] { display: none; }
+#invite-box input { text-transform: none; font-size: 11px; }
+#server-box { display: flex; flex-direction: column; gap: 8px; }
+#server-box[hidden] { display: none; }
+#server-box .note { margin-top: -4px; }

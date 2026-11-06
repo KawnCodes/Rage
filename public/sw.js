@@ -3,7 +3,7 @@
 // first visit, so the game works with no internet. When the game changes, this
 // file changes (new VERSION), the browser notices next time it's online,
 // downloads the new files, and the page offers "Update ready".
-const VERSION = '1942d8c99f135ea6';
+const VERSION = 'a899c35290eb9235';
 const CACHE = 'rage-' + VERSION;
 const FILES = [
   "./",

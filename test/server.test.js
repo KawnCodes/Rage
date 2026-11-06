@@ -107,3 +107,24 @@ test('lan endpoint is empty when listening on localhost only', async () => {
   const r = await fetch(base + '/api/lan');
   assert.deepEqual(await r.json(), { urls: [] });
 });
+
+test('quick play pairs two people, a third waits, and abandoned hosts are skipped', async () => {
+  const q = async () => { const r = await post('/api/quick'); return { status: r.status, ...(await r.json()) }; };
+  const a = await q();
+  assert.equal(a.role, 'host');
+  // a is waiting (long-poll open)
+  const waiting = fetch(`${base}/api/rooms/${a.code}/poll`, { headers: { Authorization: `Bearer ${a.token}` } });
+  const b = await q();
+  assert.equal(b.role, 'guest');
+  assert.equal(b.code, a.code);
+  assert.deepEqual(await (await waiting).json(), { msgs: [{ kind: 'joined' }] });
+  const c = await q();
+  assert.equal(c.role, 'host');
+  assert.notEqual(c.code, a.code);
+  // c "leaves" without closing: pretend its last poll was long ago
+  const stale = await post(`/api/rooms/${c.code}/close`, {}, { Authorization: `Bearer ${c.token}` });
+  assert.equal(stale.status, 204);
+  const d = await q();
+  assert.equal(d.role, 'host', 'a closed room is never matched');
+  assert.notEqual(d.code, c.code);
+});

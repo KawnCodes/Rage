@@ -147,7 +147,9 @@ Both modes unlock once you beat World 1, and multiplayer games are played in Wor
   3. The game then plays directly between the phones.
 
   Step-by-step instructions are in the game under Manual connect → "Two iPhones, no internet?". Both phones need the game saved for offline play first (see below).
-- **Online lobby:** one player hosts and gets a 6-character room code, and the friend enters it. You both land in a **room**:
+- **⚡ Quick play (one tap):** when the game is opened from a computer running `npm start`, both players tap **Quick play** and the server pairs them. Nothing to type.
+- **🔗 Invite a friend:** makes a private room and opens the share sheet with a link. Your friend taps the link and joins automatically (same Wi-Fi as the server). There's also a 6-character room code they can type instead.
+- **Online lobby:** however you connect, you both land in a **room**:
   - **📤 Share my progress** sends your progress to your partner with one press; it shows up in their *Received progress* list, ready to add to your team.
   - The host picks the world and presses **Start game**.
   - You can also share from the pause menu during a game.

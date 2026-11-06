@@ -236,6 +236,24 @@ export function createServer(opts = {}) {
     });
   }
 
+  function newRoom(quick) {
+    if (rooms.size >= LIMITS.maxRooms) return null;
+    let code;
+    do { code = roomCode(); } while (rooms.has(code));
+    const room = {
+      code,
+      quick,
+      created: Date.now(),
+      tokens: { host: crypto.randomBytes(32).toString('hex'), guest: null },
+      queues: { host: [], guest: [] },
+      waiters: { host: null, guest: null },
+      lastPoll: { host: Date.now(), guest: 0 },
+      signals: 0,
+    };
+    rooms.set(code, room);
+    return room;
+  }
+
   async function handleApi(req, res, url) {
     const ip = ipOf(req);
     if (!limits.api.allow(ip)) return sendJson(res, 429, { error: 'slow down' });
@@ -255,6 +273,28 @@ export function createServer(opts = {}) {
     // Addresses other devices on the same network can open (empty when local-only).
     if (parts.length === 2 && parts[1] === 'lan' && req.method === 'GET') return sendJson(res, 200, { urls: lanUrls });
 
+    // POST /api/quick: one-tap matchmaking. Pairs you with whoever is already
+    // waiting on this server, or makes you the one who waits.
+    if (parts.length === 2 && parts[1] === 'quick') {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
+      if (!limits.join.allow(ip)) return sendJson(res, 429, { error: 'too many attempts' });
+      await readJson(req);
+      const now = Date.now();
+      for (const room of rooms.values()) {
+        if (!room.quick || room.tokens.guest) continue;
+        // Skip rooms whose host has gone (not polling any more).
+        const alive = room.waiters.host || now - room.lastPoll.host < 25000;
+        if (!alive) { deleteRoom(room.code); continue; }
+        room.tokens.guest = crypto.randomBytes(32).toString('hex');
+        push(room, 'host', { kind: 'joined' });
+        return sendJson(res, 200, { code: room.code, token: room.tokens.guest, role: 'guest' });
+      }
+      if (!limits.create.allow(ip)) return sendJson(res, 429, { error: 'too many rooms' });
+      const room = newRoom(true);
+      if (!room) return sendJson(res, 503, { error: 'server full' });
+      return sendJson(res, 201, { code: room.code, token: room.tokens.host, role: 'host' });
+    }
+
     if (parts[1] !== 'rooms') return sendJson(res, 404, { error: 'not found' });
 
     // POST /api/rooms
@@ -262,19 +302,9 @@ export function createServer(opts = {}) {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
       if (!limits.create.allow(ip)) return sendJson(res, 429, { error: 'too many rooms' });
       await readJson(req);
-      if (rooms.size >= LIMITS.maxRooms) return sendJson(res, 503, { error: 'server full' });
-      let code;
-      do { code = roomCode(); } while (rooms.has(code));
-      const room = {
-        code,
-        created: Date.now(),
-        tokens: { host: crypto.randomBytes(32).toString('hex'), guest: null },
-        queues: { host: [], guest: [] },
-        waiters: { host: null, guest: null },
-        signals: 0,
-      };
-      rooms.set(code, room);
-      return sendJson(res, 201, { code, token: room.tokens.host });
+      const room = newRoom(false);
+      if (!room) return sendJson(res, 503, { error: 'server full' });
+      return sendJson(res, 201, { code: room.code, token: room.tokens.host });
     }
 
     const code = parts[2];
@@ -313,6 +343,7 @@ export function createServer(opts = {}) {
     if (action === 'poll') {
       if (req.method !== 'GET') return sendJson(res, 405, { error: 'method' });
       const { room, role } = auth;
+      room.lastPoll[role] = Date.now();
       if (room.queues[role].length) return sendJson(res, 200, { msgs: room.queues[role].splice(0) });
       // One long-poll per player: a new poll replaces the old one.
       const old = room.waiters[role];

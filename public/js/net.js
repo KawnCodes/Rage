@@ -170,6 +170,18 @@ export class Signaling {
     this.pollLoop();
   }
 
+  // One-tap matchmaking: returns 'host' (you wait) or 'guest' (you were paired).
+  // Polling starts once the caller has wired up the connection (startPolling()).
+  async quick() {
+    const j = await this.post('api/quick', {});
+    if (!j || !ROOM_CODE_RE.test(j.code) || typeof j.token !== 'string' || !/^[0-9a-f]{64}$/.test(j.token) ||
+        (j.role !== 'host' && j.role !== 'guest')) throw new Error('bad server reply');
+    this.code = j.code; this.token = j.token;
+    return j.role;
+  }
+
+  startPolling() { this.pollLoop(); }
+
   async join(code) {
     if (!ROOM_CODE_RE.test(code)) throw new Error('invalid room code');
     const j = await this.post(`api/rooms/${code}/join`, {});
