@@ -37,6 +37,7 @@
         <h1>RAGE</h1>
         <p class="tag">a perfectly fair platformer</p>
         <p class="welcome">Welcome Asia!</p>
+        <button data-go="profiles" id="btn-profile" class="profile-btn">Profile: Solo</button>
         <button data-go="continue" id="btn-continue" class="primary" hidden>Continue</button>
         <button data-go="new-solo">New game</button>
         <button data-go="levels">Level select</button>
@@ -57,18 +58,34 @@
         <p class="lan-line note center" hidden></p>
       </section>
 
-      <section id="menu-levels" class="panel wide" hidden>
-        <h2>Level select</h2>
-        <div class="row seg" role="radiogroup" aria-label="Players">
+      <section id="menu-levels" class="mapbar" hidden>
+        <button data-go="back">◀ Back</button>
+        <div class="seg" role="radiogroup" aria-label="Players">
           <button data-go="lvmode-solo" id="lvmode-solo" role="radio">Solo</button>
-          <button data-go="lvmode-local" id="lvmode-local" role="radio">Local 2P</button>
+          <button data-go="lvmode-local" id="lvmode-local" role="radio">2P</button>
         </div>
-        <div id="level-grid" class="grid"></div>
-        <p class="note">Beat a stage to unlock the next. Best = fewest deaths / fastest clear.</p>
+        <button data-go="map-play" class="primary">Play ▶</button>
+        <button data-go="reset-progress" class="danger" title="Reset this profile's progress">Reset</button>
+      </section>
+
+      <section id="menu-profiles" class="panel" hidden>
+        <h2>Profiles</h2>
+        <p class="note">Your solo save is yours. A <b>team</b> profile is progress two people share: use it for local co-op, and it's picked automatically when you play online together, syncing on both devices.</p>
+        <div id="profile-list" class="plist"></div>
+        <h3 class="sub">New team</h3>
         <div class="row">
-          <button data-go="back">Back</button>
-          <button data-go="reset-progress" class="danger">Reset progress</button>
+          <input id="in-team-a" maxlength="12" autocomplete="off" spellcheck="false" placeholder="NAME 1" aria-label="First name">
+          <input id="in-team-b" maxlength="12" autocomplete="off" spellcheck="false" placeholder="NAME 2" aria-label="Second name">
         </div>
+        <button data-go="team-create">Create team</button>
+        <h3 class="sub">Move progress to another device</h3>
+        <button data-go="code-export">Show progress code</button>
+        <textarea id="code-out" readonly rows="3" hidden aria-label="Your progress code"></textarea>
+        <button data-go="code-copy" hidden id="btn-code-copy">Copy</button>
+        <textarea id="code-in" rows="3" placeholder="Paste a progress code here" aria-label="Paste a progress code"></textarea>
+        <button data-go="code-import">Load progress code</button>
+        <p id="profile-status" class="status" role="status"></p>
+        <button data-go="back">Back</button>
       </section>
 
       <section id="menu-online" class="panel" hidden>

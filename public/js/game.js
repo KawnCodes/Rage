@@ -22,8 +22,9 @@ const GATE_DELAY = 30; // frames a gate stays open after its plate is released
 const TAUNTS = ['SKILL ISSUE', 'LOL', 'TRY AGAIN', 'SO CLOSE', 'BREATHE', 'RAGE QUIT?', 'OOPS', 'NOT LIKE THIS',
   'AGAIN?', 'WOW', 'CLASSIC', 'YOU GOT THIS (NO)', 'HAHA', 'UNLUCKY', 'TOTALLY FAIR'];
 
-const ENTITY_CHARS = { C: 'crumble', H: 'hspike', X: 'fblock', V: 'fspike', S: 'saw', Z: 'vsaw', J: 'spring', D: 'door', M: 'rdoor', Q: 'fdoor', O: 'toggle', o: 'toggle', L: 'laser', l: 'laser', K: 'plate', k: 'plate', G: 'gate', g: 'gate' };
-const isSolidTile = (c) => c === '#' || c === '=' || c === 'I' || c === '{' || c === '}';
+const ENTITY_CHARS = { C: 'crumble', H: 'hspike', X: 'fblock', V: 'fspike', S: 'saw', Z: 'vsaw', J: 'spring', D: 'door', M: 'rdoor', Q: 'fdoor', O: 'toggle', o: 'toggle', L: 'laser', l: 'laser', K: 'plate', k: 'plate', G: 'gate', g: 'gate', T: 'portal', t: 'portal', U: 'portal', u: 'portal' };
+const isSolidTile = (c) => c === '#' || c === '=' || c === 'I' || c === '{' || c === '}' || c === '~';
+const ICE_ACC = 0.08; // ice: slow to speed up, slow to stop
 const rect = (x, y, w, h) => ({ x, y, w, h });
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -44,6 +45,8 @@ class Player {
     this.onGround = false; this.coyote = 0; this.buffer = 0; this.canCut = false;
     this.dead = false; this.deadT = 0; this.anim = 0; this.animT = 0;
     this.prevBottom = y + this.h;
+    this.onIce = false;
+    this.inPortal = null; // the portal we just came out of (must step off it before it works again)
   }
   get rect() { return rect(this.x, this.y, this.w, this.h); }
 }
@@ -131,6 +134,7 @@ export class World {
         if (type === 'rdoor') { e.tx = target ? target.x : e.x; e.ty = target ? target.y : e.y; }
         if (type === 'toggle') e.g = c === 'O' ? 0 : 1;
         if (type === 'plate' || type === 'gate') e.ch = c === 'K' || c === 'G' ? 0 : 1;
+        if (type === 'portal') { e.ch = c === 'T' || c === 't' ? 0 : 1; e.end = c === 'T' || c === 'U' ? 0 : 1; }
         if (type === 'laser') {
           e.off = c === 'L' ? 0 : LASER_PERIOD / 2;
           let len = 0;
@@ -141,7 +145,8 @@ export class World {
       }
       if (c === 'B') {
         const cfg = this.level.boss || { kind: 0, hp: 4 };
-        boss = { x: x * TILE, y: -30, s: 0, hp: cfg.hp, maxHp: cfg.hp, kind: cfg.kind, shield: !!cfg.shield, k: 0, vy: 0, hurt: 0, cool: 60 };
+        boss = { x: x * TILE, y: -30, s: 0, hp: cfg.hp, maxHp: cfg.hp, kind: cfg.kind, shield: !!cfg.shield,
+          shards: !!cfg.shards, teleport: !!cfg.teleport, k: 0, vy: 0, hurt: 0, cool: 60 };
       }
     }));
     return { ents, boss };
@@ -294,6 +299,29 @@ export class World {
     if (this.level.coop) this.checkCoopDoor();
   }
 
+  // Step into a portal, come out of its partner with the same speed.
+  checkPortals(p) {
+    const r = rect(p.x, p.y, p.w, p.h);
+    const touching = (e) => overlap(r, rect(e.x + 1, e.y, 6, 8));
+    if (p.inPortal !== null) {
+      const cur = this.entities.find((o) => o.id === p.inPortal);
+      if (!cur || !touching(cur)) p.inPortal = null;
+    }
+    for (const e of this.entities) {
+      // Portals are one-way: T/U are entrances, t/u are where you come out.
+      if (e.type !== 'portal' || e.end !== 0 || e.id === p.inPortal || !touching(e)) continue;
+      const dest = this.entities.find((o) => o.type === 'portal' && o.ch === e.ch && o.end !== e.end);
+      if (!dest) return;
+      this.burst(p.x + 3, p.y + 4, e.ch === 0 ? '#e05ae0' : '#4fc8e8', 10);
+      p.x = dest.x + 1;
+      p.y = dest.y;
+      p.inPortal = dest.id;
+      sfx('whoosh');
+      this.burst(p.x + 3, p.y + 4, e.ch === 0 ? '#e05ae0' : '#4fc8e8', 10);
+      return;
+    }
+  }
+
   // Co-op stages only finish when every player is standing at the exit.
   checkCoopDoor() {
     const doors = this.doorRects();
@@ -310,7 +338,7 @@ export class World {
     if (this.collides(p.x, p.y, p.w, p.h)) { this.kill(p); return; } // a block appeared on top of you
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     const target = dir * RUN;
-    const acc = p.onGround ? 0.3 : 0.18;
+    const acc = p.onGround ? (p.onIce ? ICE_ACC : 0.3) : 0.18;
     if (p.vx < target) p.vx = Math.min(target, p.vx + acc);
     else if (p.vx > target) p.vx = Math.max(target, p.vx - acc);
     if (dir) p.f = dir;
@@ -345,12 +373,15 @@ export class World {
         sfx('boing');
       }
     }
+    p.onIce = false;
     if (p.onGround) {
       const under = [this.tileAt(p.x + 1, p.y + p.h + 1), this.tileAt(p.x + p.w - 1, p.y + p.h + 1)];
+      p.onIce = under.includes('~');
       const push = under.includes('}') ? CONVEYOR_SPEED : under.includes('{') ? -CONVEYOR_SPEED : 0;
       if (push) this.moveX(p, push);
     }
     this.checkBossStomp(p);
+    this.checkPortals(p);
 
     if (p.dead) return;
     if (!p.onGround) p.anim = 3;
@@ -481,7 +512,12 @@ export class World {
       const w = this.level.world;
       if (isLastWorld(w)) this.onEvent('victory');
       else {
-        this.worldClear = { world: w, next: WORLDS[w + 1].start, nextCoop: WORLDS[w + 1].coop };
+        // Solo players skip co-op-only worlds (World 3) and go straight on to the next one.
+        let nw = w + 1;
+        const solo = this.activePlayers().length < 2 && this.mode !== 'local';
+        const skipped = solo && WORLDS[nw].coop && WORLDS[nw + 1] ? nw : -1;
+        if (skipped >= 0) nw++;
+        this.worldClear = { world: w, nextWorld: nw, next: WORLDS[nw].start, nextCoop: WORLDS[nw].coop, skipped };
         this.onEvent('world-clear', this.worldClear);
       }
     } else {
@@ -658,7 +694,7 @@ export class World {
     if (!this.auth) return;
     // 0..3, how angry it is. Scales with damage taken, whatever its max HP.
     const phase = Math.min(3, Math.floor(((b.maxHp - b.hp) * 4) / b.maxHp));
-    const hard = b.kind === 1;
+    const hard = b.shards; // ceiling shards on slam, faster, shorter dizzy spells
     const target = this.bossTarget();
     b.k++;
     switch (b.s) {
@@ -673,11 +709,18 @@ export class World {
           b.x += clamp(tx - b.x, -sp, sp);
         }
         b.y = 32 + Math.sin(this.frame * 0.08) * 3;
+        // Glitchy bosses blink to a new spot every so often.
+        if (b.teleport && b.k > 0 && b.k % 75 === 0) {
+          this.burst(b.x + 12, b.y + 12, '#e05ae0', 16);
+          b.x = 66 + Math.random() * 164;
+          this.burst(b.x + 12, b.y + 12, '#e05ae0', 16);
+          sfx('whoosh');
+        }
         if (--b.cool <= 0 && target) {
           const alive = this.alivePlayers();
           // The Warden spreads its attention: it alternates between players (so the switch-holder isn't safe).
           const shotAt = b.kind === 2 && alive.length ? alive[(this.bossTurn = (this.bossTurn || 0) + 1) % alive.length] : target;
-          this.bossShoot(b, shotAt, phase); b.cool = 80 - phase * 15 - (hard ? 12 : 0); }
+          this.bossShoot(b, shotAt, phase); b.cool = Math.max(34, 80 - phase * 15 - (hard ? 12 : 0)); } // at least ~0.55s between volleys
         if (b.k > 170 - phase * 20) { b.s = 2; b.k = 0; }
         break;
       }
@@ -943,7 +986,7 @@ export class World {
       ctx.fillStyle = '#0a0610'; ctx.fillRect(bx - 1, 9, bw + 2, 5);
       const seg = bw / b.maxHp;
       for (let i = 0; i < b.maxHp; i++) {
-        ctx.fillStyle = i < b.hp ? ['#c05ad0', '#4fc8e8', '#8ac06a'][b.kind] || '#c05ad0' : '#2a1c3a';
+        ctx.fillStyle = i < b.hp ? ['#c05ad0', '#4fc8e8', '#8ac06a', '#e8f4ff', '#e05ae0', '#ff5a3a'][b.kind] || '#c05ad0' : '#2a1c3a';
         ctx.fillRect(Math.round(bx + i * seg), 10, Math.round(seg) - 1, 3);
       }
     }
@@ -978,7 +1021,9 @@ export class World {
       drawTextCentered(ctx, 'HUZZAR!!', W / 2, 8, this.frame % 16 < 8 ? '#f5c542' : '#5fd068', 3);
       drawTextCentered(ctx, `YOU BEAT ${this.level.name}`, W / 2, 30, '#f5c542', 2);
       if (this.worldClear) {
-        drawTextCentered(ctx, `WORLD ${this.worldClear.world + 2} UNLOCKED: ${WORLDS[this.worldClear.world + 1].name}`, W / 2, 52, '#5fd068', 1);
+        const wc = this.worldClear;
+        drawTextCentered(ctx, `WORLD ${wc.nextWorld + 1} UNLOCKED: ${WORLDS[wc.nextWorld].name}`, W / 2, 52, '#5fd068', 1);
+        if (wc.skipped >= 0) drawTextCentered(ctx, `(WORLD ${wc.skipped + 1} IS CO-OP: PLAY IT WITH A FRIEND)`, W / 2, 60, '#4fc8e8', 1);
         if (this.worldClear.world === 0) drawTextCentered(ctx, '2 PLAYER MODES UNLOCKED', W / 2, 60, '#4fc8e8', 1);
         if (this.worldClear.nextCoop) drawTextCentered(ctx, 'IT IS CO-OP ONLY: GRAB A FRIEND', W / 2, 60, '#4fc8e8', 1);
       }
@@ -988,7 +1033,7 @@ export class World {
         drawTextCentered(ctx, `${p.name}: ${p.deaths} DEATHS`, W / 2, 96 + i * 14, S.playerColor(p.idx), 2);
       });
       drawTextCentered(ctx, this.worldClear ? 'IT GETS WORSE.' : 'WORTH IT?', W / 2, 132, '#c8c0d8', 1);
-      drawTextCentered(ctx, this.worldClear && this.continueNext ? `PRESS ENTER FOR WORLD ${this.worldClear.world + 2}` : 'PRESS ENTER', W / 2, 150, '#5fd068', 1);
+      drawTextCentered(ctx, this.worldClear && this.continueNext ? `PRESS ENTER FOR WORLD ${this.worldClear.nextWorld + 1}` : 'PRESS ENTER', W / 2, 150, '#5fd068', 1);
     }
   }
 }

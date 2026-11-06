@@ -1,7 +1,7 @@
 {
   "name": "rage",
   "version": "1.0.0",
-  "description": "A pixel-art rage platformer with local and online co-op. Zero dependencies.",
+  "description": "A pixel-art rage platformer: six worlds, six bosses, local and online co-op. Zero dependencies.",
   "private": true,
   "type": "module",
   "license": "MIT",

@@ -17,6 +17,8 @@
 //   L l  ceiling laser, two timings (fires a beam straight down)
 //   K k  pressure plate, channel 1 / 2 (opens gates while someone stands on it)
 //   G g  gate, channel 1 / 2 (solid until a matching plate is held)
+//   ~    ice (solid, slippery)
+//   T t  portal pair 1: step into one, come out of the other (U u: pair 2)
 
 export const TILE = 8;
 export const COLS = 40;
@@ -233,16 +235,167 @@ const WORLD3 = [
   }, { boss: { kind: 2, hp: 6, shield: true } }),
 ];
 
+// ---- World 4: THE FROST (ice) ----
+const WORLD4 = [
+  build('SLIP N SLIDE', 'BRAKES NOT INCLUDED', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(7, 20, 15, 1, '~');
+    L.rect(22, 20, 3, 1, '^');
+    L.rect(25, 20, 6, 1, '~');
+    L.set(28, 3, 'V');
+    L.set(33, 19, 'H');
+    L.set(37, 19, 'D');
+  }),
+
+  build('ICICLES', 'LOOK UP', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(6, 20, 26, 1, '~');
+    for (const c of [9, 13, 17, 21, 25, 29]) L.set(c, 2, 'V');
+    L.rect(18, 17, 4, 1, '~');
+    L.set(37, 19, 'D');
+  }),
+
+  build('COLD FEET', 'DONT STOP. CANT STOP.', (L) => {
+    L.rect(0, 20, 5, 3, '#');
+    L.rect(5, 21, 31, 2, '#'); L.rect(5, 20, 31, 1, '^');
+    L.rect(36, 20, 4, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(7, 17, 3, 1, '~');
+    L.rect(13, 16, 3, 1, '~');
+    L.rect(19, 17, 3, 1, '~');
+    L.rect(25, 16, 3, 1, '~');
+    L.rect(31, 17, 3, 1, '~');
+    L.set(9, 11, '='); L.set(30, 11, '=');
+    L.set(18, 11, 'S');
+    L.set(38, 19, 'D');
+  }),
+
+  build('THE YETI', 'IT IS SLIPPERY DOWN THERE', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.rect(9, 20, 22, 1, '~');
+    L.set(3, 19, 'P'); L.set(5, 19, 'p');
+    L.rect(3, 15, 5, 1, '=');
+    L.rect(32, 15, 5, 1, '=');
+    L.set(19, 4, 'B');
+  }, { boss: { kind: 3, hp: 5, shards: true } }),
+];
+
+// ---- World 5: THE VOID (portals) ----
+const WORLD5 = [
+  build('PORTALS', 'IN ONE SIDE. OUT THE OTHER.', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(18, 1, 2, 19, '#');
+    L.set(15, 19, 'T'); L.set(22, 19, 't');
+    L.rect(25, 20, 3, 1, '^');
+    L.set(31, 19, 'U'); L.set(6, 19, 'u');
+    L.set(37, 19, 'D');
+  }),
+
+  build('LEAP OF FAITH', 'JUMP IN THE HOLE. TRUST ME.', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.rect(10, 20, 3, 1, ' ');
+    L.set(11, 20, 'T'); L.set(26, 6, 't');
+    L.rect(24, 7, 6, 1, '=');
+    L.rect(32, 9, 7, 1, '=');
+    L.set(34, 8, 'H');
+    L.set(37, 8, 'D');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.set(6, 19, 'U'); L.set(20, 15, 'u');
+    L.rect(19, 20, 3, 1, '^');
+  }),
+
+  build('GLITCH WALK', 'WHICH ONE IS REAL?', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(13, 1, 1, 19, '#');
+    L.set(11, 19, 'T'); L.set(15, 19, 't');
+    L.set(18, 1, 'L'); L.set(22, 1, 'l');
+    L.rect(26, 1, 1, 19, '#');
+    L.set(24, 19, 'U'); L.set(29, 19, 'u');
+    L.rect(31, 20, 1, 3, 'F');
+    L.set(34, 19, 'H');
+    L.set(37, 19, 'D');
+  }),
+
+  build('THE GLITCH', 'NOW YOU SEE IT. NOW YOU DONT.', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(3, 19, 'P'); L.set(5, 19, 'p');
+    L.rect(3, 15, 5, 1, '=');
+    L.rect(32, 15, 5, 1, '=');
+    L.set(19, 4, 'B');
+  }, { boss: { kind: 4, hp: 6, teleport: true } }),
+];
+
+// ---- World 6: THE CORE (everything, then the final boss) ----
+const WORLD6 = [
+  build('MELTDOWN', 'THE FLOOR IS... SPIKES', (L) => {
+    L.rect(0, 20, 6, 3, '#');
+    L.rect(6, 21, 28, 2, '#'); L.rect(6, 20, 28, 1, '^');
+    L.rect(34, 20, 6, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(8, 17, 4, 1, '{');
+    L.rect(14, 16, 3, 1, 'O');
+    L.rect(19, 15, 3, 1, 'o');
+    L.rect(24, 16, 4, 1, '~');
+    L.rect(30, 17, 3, 1, '}');
+    L.set(20, 1, 'l');
+    L.set(37, 19, 'D');
+  }),
+
+  build('ROUND TRIP', 'SEE YOU AT THE START :)', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.set(9, 19, 'J');
+    L.rect(12, 12, 8, 1, '=');
+    L.set(15, 3, 'V');
+    L.set(18, 11, 'T');
+    L.rect(32, 4, 7, 1, '=');
+    L.set(33, 3, 't');
+    L.set(37, 3, 'D');
+    L.set(28, 19, 'U'); L.set(5, 19, 'u');
+    L.set(24, 10, 'X');
+  }),
+
+  build('LAST STRAW', 'ALMOST THERE. PROBABLY.', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.rect(8, 20, 31, 1, '^');
+    L.set(2, 19, 'P'); L.set(3, 19, 'p');
+    L.rect(9, 17, 3, 1, '~');
+    L.rect(14, 15, 3, 1, 'C');
+    L.rect(19, 13, 3, 1, 'O');
+    L.rect(24, 11, 3, 1, 'o');
+    L.rect(29, 9, 3, 1, '=');
+    L.set(30, 1, 'L');
+    L.rect(33, 7, 6, 1, '{');
+    L.set(37, 6, 'D');
+  }),
+
+  build('THE RAGE', 'THIS IS IT. NO REFUNDS.', (L) => {
+    L.rect(0, 20, 40, 3, '#');
+    L.rect(1, 20, 6, 1, '}'); L.rect(33, 20, 6, 1, '{');
+    L.set(3, 19, 'P'); L.set(5, 19, 'p');
+    L.rect(3, 15, 5, 1, '=');
+    L.rect(32, 15, 5, 1, '=');
+    L.set(19, 4, 'B');
+  }, { boss: { kind: 5, hp: 8, shards: true, teleport: true } }),
+];
+
 export const WORLDS = Object.freeze([
   { name: 'THE PIT', levels: WORLD1, coop: false },
   { name: 'THE MACHINE', levels: WORLD2, coop: false },
   { name: 'THE BOND', levels: WORLD3, coop: true },
+  { name: 'THE FROST', levels: WORLD4, coop: false },
+  { name: 'THE VOID', levels: WORLD5, coop: false },
+  { name: 'THE CORE', levels: WORLD6, coop: false },
 ].map((w, wi, all) => {
   const start = all.slice(0, wi).reduce((n, x) => n + x.levels.length, 0);
   return Object.freeze({ name: w.name, start, end: start + w.levels.length - 1, coop: w.coop });
 }));
 
-export const LEVELS = Object.freeze([...WORLD1, ...WORLD2, ...WORLD3].map((L, i) => {
+export const LEVELS = Object.freeze([...WORLD1, ...WORLD2, ...WORLD3, ...WORLD4, ...WORLD5, ...WORLD6].map((L, i) => {
   const world = WORLDS.findIndex((w) => i >= w.start && i <= w.end);
   return Object.freeze({ ...L, world, stage: i - WORLDS[world].start, coop: WORLDS[world].coop });
 }));
@@ -252,6 +405,7 @@ export const MULTIPLAYER_START = WORLDS[1].start;
 
 // Co-op worlds can't be played solo.
 export const COOP_START = WORLDS.find((w) => w.coop).start;
+export const COOP_END = WORLDS.find((w) => w.coop).end;
 export const isCoopLevel = (i) => !!(LEVELS[i] && LEVELS[i].coop);
 
 export const isBossLevel = (i) => !!(LEVELS[i] && LEVELS[i].boss);

@@ -26,6 +26,21 @@ const THEMES = [
   { bg: ['#120e14', '#1c1620', '#2e2434'], g: ['#2a2230', '#46384e', '#6a5874', '#a08aa8'] },
   { bg: ['#10100a', '#1a1a10', '#2c2c1a'], g: ['#2a2818', '#48442a', '#6e683e', '#a8a064'] },
   { bg: ['#140c08', '#20140c', '#342214'], g: ['#2e1e12', '#4e341e', '#76502c', '#b07c48'] },
+  // World 4: THE FROST (icy blues)
+  { bg: ['#0a1420', '#10202e', '#1c3448'], g: ['#2a4a66', '#4a7aa0', '#7ab0d4', '#d8f0ff'] },
+  { bg: ['#0c1218', '#141e28', '#22303e'], g: ['#2c4458', '#4c6e8a', '#78a0bc', '#d0e8f8'] },
+  { bg: ['#0a1018', '#121c2a', '#1e2e44'], g: ['#26405c', '#466a90', '#74a0c8', '#cce6ff'] },
+  { bg: ['#060c16', '#0e1626', '#1a2640'], g: ['#203c5c', '#3e6690', '#6e9cc8', '#c8e2ff'] },
+  // World 5: THE VOID (deep purple and black)
+  { bg: ['#06030c', '#0e0818', '#1c1030'], g: ['#24123a', '#3e2060', '#6a3a9a', '#b07ae0'] },
+  { bg: ['#05040a', '#0c0a16', '#18142c'], g: ['#1e1838', '#342a5c', '#584a8e', '#9a88d4'] },
+  { bg: ['#08030a', '#120816', '#22102a'], g: ['#2a1032', '#481c56', '#783488', '#c06ad0'] },
+  { bg: ['#020208', '#080812', '#121228'], g: ['#16163a', '#262666', '#40409a', '#8080e0'] },
+  // World 6: THE CORE (lava reds and oranges)
+  { bg: ['#140404', '#200808', '#381010'], g: ['#3a1208', '#6a2410', '#a4441c', '#f08a3a'] },
+  { bg: ['#120606', '#1e0a08', '#341410'], g: ['#3c160c', '#682a14', '#9c4a22', '#e8904a'] },
+  { bg: ['#160404', '#240806', '#3e100a'], g: ['#401008', '#721e0c', '#b03814', '#ff7a2a'] },
+  { bg: ['#100000', '#1c0404', '#320808'], g: ['#300808', '#5a1010', '#902018', '#e84a2a'] },
 ];
 export const theme = (i) => THEMES[i % THEMES.length];
 
@@ -156,6 +171,14 @@ function drawGround(ctx, grid, tx, ty, t) {
   if (!solidish(tx, ty + 1)) { ctx.fillStyle = g[0]; ctx.fillRect(px, py + 7, 8, 1); }
 }
 
+function drawIce(ctx, tx, ty) {
+  const px = tx * TILE, py = ty * TILE;
+  ctx.fillStyle = '#7ab8e0'; ctx.fillRect(px, py, 8, 8);
+  ctx.fillStyle = '#d8f0ff'; ctx.fillRect(px, py, 8, 2);
+  ctx.fillStyle = '#4a88b8'; ctx.fillRect(px, py + 7, 8, 1);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(px + 1 + ((tx * 3) % 4), py + 3, 2, 1); ctx.fillRect(px + 5 - ((ty * 2) % 3), py + 5, 1, 1);
+}
+
 function drawBrick(ctx, tx, ty) {
   const px = tx * TILE, py = ty * TILE;
   ctx.fillStyle = BRICK[1]; ctx.fillRect(px, py, 8, 8);
@@ -189,6 +212,7 @@ export function renderLevelCanvas(grid, levelIndex) {
       const ch = grid[ty][tx];
       if (ch === '#' || ch === 'F') drawGround(x, grid, tx, ty, t);
       else if (ch === '=') drawBrick(x, tx, ty);
+      else if (ch === '~') drawIce(x, tx, ty);
       else if (sp[ch]) x.drawImage(sp[ch], tx * TILE, ty * TILE);
     }
   }
@@ -291,6 +315,9 @@ export function drawEntity(ctx, e, frame, levelIndex) {
     case 'plate':
       drawPlate(ctx, e, frame);
       return;
+    case 'portal':
+      drawPortal(ctx, e, frame);
+      return;
     case 'gate':
       drawGate(ctx, e, frame);
       return;
@@ -365,6 +392,19 @@ function drawGate(ctx, e, frame) {
   ctx.fillStyle = c[1]; ctx.fillRect(x, y + 3, 8, 1);
 }
 
+function drawPortal(ctx, e, frame) {
+  const x = Math.round(e.x), y = Math.round(e.y);
+  const c = e.ch === 0 ? ['#e05ae0', '#ffb0ff', '#5a1a5a'] : ['#3cb4e0', '#b0f0ff', '#14465a'];
+  ctx.fillStyle = c[2]; ctx.fillRect(x + 1, y - 3, 6, 11);
+  ctx.fillStyle = e.end === 1 ? c[2] : c[0]; ctx.fillRect(x, y - 2, 1, 9); ctx.fillRect(x + 7, y - 2, 1, 9); ctx.fillRect(x + 1, y - 4, 6, 1); ctx.fillRect(x + 1, y + 7, 6, 1);
+  if (e.end === 1) return; // exits are quiet: no swirl
+  ctx.fillStyle = c[1];
+  for (let i = 0; i < 3; i++) {
+    const t = (frame * 0.15 + i * 2.1);
+    ctx.fillRect(x + 3 + Math.round(Math.cos(t) * 2), y + 2 + Math.round(Math.sin(t) * 3.5), 1, 1);
+  }
+}
+
 export function drawShield(ctx, b, frame) {
   const cx = b.x + 12, cy = b.y + 13, r = 16;
   ctx.fillStyle = frame % 8 < 4 ? 'rgba(79,200,232,0.9)' : 'rgba(168,232,255,0.7)';
@@ -395,6 +435,9 @@ const BOSS_COLORS = [
   { body: '#8a2a9a', dark: '#5a1468', lite: '#c05ad0', eye: PAL.red }, // The Grudge
   { body: '#3a6a8a', dark: '#1e3a52', lite: '#7ac0e0', eye: PAL.yel }, // The Overclock
   { body: '#4a7a3a', dark: '#2a4a1e', lite: '#8ac06a', eye: PAL.org }, // The Warden
+  { body: '#c8dcec', dark: '#7a98b4', lite: '#ffffff', eye: PAL.cyan }, // The Yeti
+  { body: '#5a2a8a', dark: '#2e1050', lite: '#e05ae0', eye: '#5fd068' }, // The Glitch
+  { body: '#a01818', dark: '#4a0606', lite: '#ff6a2a', eye: PAL.yel }, // The Rage
 ];
 function makeBoss(variant, kind) {
   const c = canvas(24, 24);
@@ -415,7 +458,20 @@ function makeBoss(variant, kind) {
       x.fillRect(i, j, 1, 1);
     }
   }
-  if (kind === 2) {
+  if (kind === 5) {
+    // horns on fire
+    x.fillStyle = PAL.K; x.fillRect(3, 1, 2, 4); x.fillRect(19, 1, 2, 4);
+    x.fillStyle = PAL.org; x.fillRect(3, 0, 2, 1); x.fillRect(19, 0, 2, 1);
+    x.fillStyle = PAL.yel; x.fillRect(4, 0, 1, 1); x.fillRect(19, 0, 1, 1);
+  } else if (kind === 4) {
+    // broken antenna + glitch pixels
+    x.fillStyle = PAL.K; x.fillRect(9, 0, 1, 4); x.fillRect(14, 1, 1, 3);
+    x.fillStyle = '#5fd068'; x.fillRect(9, 0, 1, 1); x.fillRect(2, 12, 2, 1); x.fillRect(20, 16, 2, 1);
+  } else if (kind === 3) {
+    // shaggy fur tufts
+    x.fillStyle = '#ffffff';
+    for (const [fx, fy] of [[4, 3], [8, 2], [12, 1], [16, 2], [19, 3]]) x.fillRect(fx, fy, 2, 2);
+  } else if (kind === 2) {
     // crown
     x.fillStyle = PAL.yel;
     x.fillRect(6, 1, 12, 2); x.fillRect(6, 0, 1, 1); x.fillRect(11, 0, 2, 1); x.fillRect(17, 0, 1, 1);
@@ -451,7 +507,7 @@ function makeBoss(variant, kind) {
 }
 function getBoss(kind) {
   if (!bossFrames) bossFrames = [];
-  const k = kind === 1 || kind === 2 ? kind : 0;
+  const k = kind >= 1 && kind <= 5 ? kind : 0;
   if (!bossFrames[k]) {
     bossFrames[k] = { normal: makeBoss('normal', k), flash: makeBoss('flash', k), rage: makeBoss('rage', k), dizzy: makeBoss('dizzy', k) };
   }

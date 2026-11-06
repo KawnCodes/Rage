@@ -1,10 +1,11 @@
 # RAGE
 
-A pixel-art rage platformer for the browser with three worlds, each ending in a boss:
+A pixel-art rage platformer for the browser with six worlds, each ending in a boss:
 
 - **World 1** is solo.
 - Beating its boss unlocks **World 2**, which you can play solo, local 2-player or online 2-player through a lobby.
 - Beating World 2 unlocks **World 3**, which is co-op only: two players have to work together to beat it.
+- **Worlds 4, 5 and 6** can be played solo or together. Beating World 2 solo skips the co-op world and goes straight to World 4.
 
 Everything is built with plain HTML5 canvas, CSS and JavaScript. It has **zero dependencies** and no external assets: all the pixel art, the font and the sound effects are generated in code.
 
@@ -44,10 +45,15 @@ Requires Node 18 or newer. The `public/` folder also works on any static host (G
 
 **Full screen:** starting a game on a phone or tablet goes full screen automatically where the browser allows it. There's also a ⛶ button and an **F** key. On iPhone, Safari doesn't allow web pages to go full screen; instead tap Share → **Add to Home Screen** and open RAGE from the home screen.
 
-### Menus, saving and level select
+### Menus, saving and the world map
 
 - **Autosave:** your run (stage, deaths, time) saves automatically on every stage change, every death, when you pause, and when you leave the page. **Continue** on the main menu picks up where you left off.
-- **Level select:** stages unlock as you beat them. Each card shows your best (fewest deaths, fastest clear). You can start any unlocked stage in Solo or Local 2P. **Reset progress** wipes everything.
+- **World map (Level select):** each world is a little overworld with stage dots joined by a path and a castle for the boss. Walk along it with the arrow keys or D-pad and press Enter or A to play; **up/down** switch world. On a touchscreen, tap a stage to walk there and tap it again to play. Cleared stages get a flag, and the box at the bottom shows your best (fewest deaths, fastest clear). Switch between **Solo** and **2P** in the bar at the bottom. **Reset** wipes the current profile's progress.
+- **Profiles and shared progress:** main menu → **Profile**. Your **Solo** profile is yours alone. A **team** profile (for example "ASIA & JULIAN") is progress two people share:
+  - Pick it for local co-op on one device.
+  - Online, the team profile for the two of you is picked automatically on both devices and kept in sync as you clear stages.
+  - A new team starts with the furthest progress either of you had on your own.
+  - **Show progress code / Load progress code** moves any profile to another device. Loading a code combines it with what's already there, so nothing is lost.
 - **In-game toolbar:** Home, sound and pause buttons, plus the stage, run time and your best for the stage.
 - **Pause menu:** Resume, Restart stage, Level select, Sound and Home. Press **H** to go straight home.
 - **Menus** work with the keyboard (arrow keys and Enter, Esc for back) and controllers (D-pad, A to select, B for back).
@@ -74,6 +80,24 @@ Saves stay in your browser (`localStorage`) and never leave your machine. A save
 2. **Tag Team**: gates open only while someone holds the matching plate. You hold, I go, then swap.
 3. **Trust Fall**: boost, hold, spring, hold again.
 4. **Boss, The Warden**: its shield only drops while someone stands on a floor switch. One player holds the switch while the other stomps. It shoots at both of you in turn.
+
+### World 4: The Frost
+1. **Slip N Slide**: ice. Brakes not included.
+2. **Icicles**: look up.
+3. **Cold Feet**: tiny ice platforms over spikes, plus a saw.
+4. **Boss, The Yeti**: shards fall when it slams, and the middle of the arena is ice.
+
+### World 5: The Void
+1. **Portals**: step into one, come out of the other. Not every portal is your friend.
+2. **Leap of Faith**: jump in the hole. Trust me.
+3. **Glitch Walk**: walls you can only get past by portal, plus lasers.
+4. **Boss, The Glitch**: it teleports around the arena.
+
+### World 6: The Core
+1. **Meltdown**: conveyors, blinking blocks and ice over a sea of spikes.
+2. **Round Trip**: see you at the start :)
+3. **Last Straw**: one long climb using everything.
+4. **Final boss, The Rage**: 8 hits, falling shards and teleporting. No refunds.
 
 The exit door in World 3 only works when **both** players are at it. If your online partner leaves during World 3, the game ends, because it can't be finished alone.
 
@@ -120,7 +144,8 @@ public/            the game (works from any static host)
   js/levels.js     stage layouts
   js/net.js        WebRTC link + lobby client
   js/protocol.js   message validation (shared with the server)
-  js/save.js       autosave, unlocks and best times
+  js/save.js       autosave, profiles/teams, unlocks, best times, progress codes
+  js/map.js        the overworld map
 server/server.js   static files + lobby, zero dependencies
 test/              node:test suites
 ```

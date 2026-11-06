@@ -2,8 +2,12 @@
 // treated as untrusted (it can be edited by hand or corrupted) and rebuilt
 // field by field with clamped values, so a bad save can never break the game.
 import { LEVELS, MULTIPLAYER_START, isCoopLevel } from './levels.js';
+import { sanitizeName } from './protocol.js';
 
-const KEY = 'rage-save-v1';
+const KEY = 'rage-save-v1'; // the solo profile
+const TEAMS_KEY = 'rage-teams-v1'; // team profiles: { active, teams: { id: { names, save } } }
+const MAX_TEAMS = 10;
+const CODE_PREFIX = 'RAGESAVE1-';
 const N = LEVELS.length;
 
 const int = (v, lo, hi, def) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : def);
@@ -46,9 +50,9 @@ export function clean(raw) {
     for (let i = 0; i < N; i++) {
       const b = raw.best[i];
       if (b && typeof b === 'object') {
-        const deaths = int(b.deaths, 0, 1e9, null);
-        const time = int(b.time, 1, 1e10, null);
-        if (deaths !== null && time !== null) s.best[i] = { deaths, time };
+        // Out-of-range records are dropped, not clamped (no fake "0 deaths in 0:00").
+        const ok = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+        if (ok(b.deaths, 0, 1e9) && ok(b.time, 1, 1e10)) s.best[i] = { deaths: Math.round(b.deaths), time: Math.round(b.time) };
       }
     }
   }
@@ -57,7 +61,76 @@ export function clean(raw) {
   return s;
 }
 
-export function load() {
+// ---------- profiles ----------
+// 'solo' is the personal save. A team profile ("ASIA & JULIAN") is a save two
+// people share: it's what local co-op and online games with that partner use.
+
+export function teamId(a, b) {
+  return [sanitizeName(a), sanitizeName(b)].sort().join(' & ');
+}
+const TEAM_ID_RE = /^[A-Z0-9 _-]{1,12} & [A-Z0-9 _-]{1,12}$/;
+
+function readTeams() {
+  const out = { active: null, teams: {} };
+  try {
+    const txt = localStorage.getItem(TEAMS_KEY);
+    if (!txt || txt.length > 200000) return out;
+    const raw = JSON.parse(txt);
+    if (!raw || typeof raw !== 'object' || !raw.teams || typeof raw.teams !== 'object') return out;
+    for (const [id, t] of Object.entries(raw.teams).slice(0, MAX_TEAMS)) {
+      if (!TEAM_ID_RE.test(id) || !t || typeof t !== 'object') continue;
+      const names = Array.isArray(t.names) ? t.names.slice(0, 2).map(sanitizeName) : id.split(' & ');
+      out.teams[id] = { names: names.length === 2 ? names : id.split(' & '), save: clean(t.save) };
+    }
+    if (typeof raw.active === 'string' && out.teams[raw.active]) out.active = raw.active;
+  } catch { /* corrupted: start over */ }
+  return out;
+}
+
+function writeTeams(t) {
+  try { localStorage.setItem(TEAMS_KEY, JSON.stringify(t)); return true; } catch { return false; }
+}
+
+export function listTeams() {
+  const t = readTeams();
+  return Object.entries(t.teams).map(([id, v]) => ({ id, names: v.names, unlocked: v.save.unlocked }));
+}
+
+// 'solo' or a team id
+export function activeProfile() {
+  return readTeams().active || 'solo';
+}
+
+export function setActiveProfile(id) {
+  const t = readTeams();
+  t.active = id && id !== 'solo' && t.teams[id] ? id : null;
+  writeTeams(t);
+  return t.active || 'solo';
+}
+
+export function createTeam(a, b) {
+  const id = teamId(a, b);
+  const t = readTeams();
+  if (!t.teams[id]) {
+    if (Object.keys(t.teams).length >= MAX_TEAMS) return null;
+    t.teams[id] = { names: [sanitizeName(a), sanitizeName(b)], save: emptySave() };
+  }
+  writeTeams(t);
+  return id;
+}
+
+export function deleteTeam(id) {
+  const t = readTeams();
+  delete t.teams[id];
+  if (t.active === id) t.active = null;
+  writeTeams(t);
+}
+
+export function load(profile = activeProfile()) {
+  if (profile !== 'solo') {
+    const t = readTeams();
+    return t.teams[profile] ? t.teams[profile].save : emptySave();
+  }
   try {
     const txt = localStorage.getItem(KEY);
     if (!txt || txt.length > 20000) return emptySave();
@@ -67,13 +140,65 @@ export function load() {
   }
 }
 
-export function store(save) {
+export function store(save, profile = activeProfile()) {
+  if (profile !== 'solo') {
+    const t = readTeams();
+    if (!t.teams[profile]) return false;
+    t.teams[profile].save = save;
+    return writeTeams(t);
+  }
   try { localStorage.setItem(KEY, JSON.stringify(save)); return true; } catch { return false; }
 }
 
-export function wipe() {
+export function wipe(profile = activeProfile()) {
+  if (profile !== 'solo') {
+    store(emptySave(), profile);
+    return emptySave();
+  }
   try { localStorage.removeItem(KEY); } catch { /* ignore */ }
   return emptySave();
+}
+
+// Combine two saves of the same profile: furthest unlock and best records win.
+export function merge(a, b) {
+  const s = clean(a);
+  const o = clean(b);
+  s.unlocked = Math.max(s.unlocked, o.unlocked);
+  s.totalDeaths = Math.max(s.totalDeaths, o.totalDeaths);
+  s.wins = Math.max(s.wins, o.wins);
+  s.cheated = s.cheated || o.cheated;
+  for (let i = 0; i < N; i++) {
+    const x = s.best[i], y = o.best[i];
+    if (!x) s.best[i] = y;
+    else if (y) s.best[i] = { deaths: Math.min(x.deaths, y.deaths), time: Math.min(x.time, y.time) };
+  }
+  return s;
+}
+
+// ---------- sharing progress ----------
+// Compact form sent to an online partner (no run, just unlocks and records).
+export function toWire(save) {
+  return { u: save.unlocked, w: save.wins, b: save.best.map((b) => (b ? [b.deaths, b.time] : null)) };
+}
+export function fromWire(m) {
+  return clean({ unlocked: m.u, wins: m.w, best: (m.b || []).map((b) => (b ? { deaths: b[0], time: b[1] } : null)) });
+}
+
+// A copy/paste "progress code" to move a profile between devices.
+export function exportCode(save, names) {
+  const body = { n: names || null, ...toWire(save) };
+  return CODE_PREFIX + btoa(JSON.stringify(body));
+}
+
+export function importCode(code) {
+  if (typeof code !== 'string') return null;
+  const c = code.replace(/\s+/g, '');
+  if (!c.startsWith(CODE_PREFIX) || c.length > 20000) return null;
+  let raw;
+  try { raw = JSON.parse(atob(c.slice(CODE_PREFIX.length))); } catch { return null; }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const names = Array.isArray(raw.n) && raw.n.length === 2 ? raw.n.map(sanitizeName) : null;
+  return { names, save: fromWire(raw) };
 }
 
 // Record a finished stage: unlock the next one and keep personal bests.

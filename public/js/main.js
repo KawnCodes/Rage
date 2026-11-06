@@ -9,6 +9,7 @@ import { PROTOCOL_VERSION, sanitizeName, encodeManual, decodeManual, ROOM_CODE_R
 import { renderLevelCanvas } from './sprites.js';
 import { LEVELS, WORLDS, MULTIPLAYER_START, COOP_START, isBossLevel, isCoopLevel, stageLabel as shortLabel } from './levels.js';
 import * as Save from './save.js';
+import { MapScreen } from './map.js';
 
 const $ = (sel) => document.querySelector(sel);
 const canvas = $('#screen');
@@ -29,7 +30,9 @@ let sig = null;
 let partnerName = 'FRIEND';
 let lastDoorMsg = 0;
 let pingN = 0;
-let save = Save.load();
+let profile = Save.activeProfile(); // 'solo' or a team id like 'ASIA & JULIAN'
+let save = Save.load(profile);
+const map = new MapScreen();
 let lvMode = 'solo';
 let currentPanel = null;
 
@@ -51,7 +54,7 @@ window.addEventListener('orientationchange', () => setTimeout(fit, 150));
 fit();
 
 // ---------- menus ----------
-const panels = ['menu-main', 'menu-levels', 'menu-online', 'menu-manual', 'menu-controls', 'menu-cheats', 'menu-pause'];
+const panels = ['menu-main', 'menu-levels', 'menu-profiles', 'menu-online', 'menu-manual', 'menu-controls', 'menu-cheats', 'menu-pause'];
 const touchPad = new TouchPad($('#touch'), input);
 
 // ---------- touch controls ----------
@@ -127,7 +130,7 @@ function show(id) {
   if (id === 'menu-main') refreshMain();
   if (id === 'menu-pause') refreshPause();
   if (id === null) { document.activeElement?.blur?.(); return; }
-  if (touchActive()) return; // no focus rings / pop-up keyboards on phones
+  if (touchActive() || id === 'menu-levels') return; // no focus rings / pop-up keyboards on phones; the map uses the keys itself
   const first = $(`#${id} button:not([hidden]):not(:disabled), #${id} input`);
   if (first) first.focus({ preventScroll: true });
 }
@@ -191,7 +194,7 @@ document.addEventListener('click', (e) => {
   initAudio();
   sfx('select');
   // Don't leave focus on toolbar buttons, or Space (jump) would press them again.
-  if (b.closest('#toolbar')) b.blur();
+  if (b.closest('#toolbar') || b.closest('.mapbar')) b.blur();
   actions[b.dataset.go]?.(b);
 });
 // Unlock audio on first gesture of any kind.
@@ -205,13 +208,19 @@ const actions = {
   },
   'new-solo': () => newRun('solo'),
   'new-local': () => { if (requireMultiplayer()) newRun('local', MULTIPLAYER_START); },
-  levels: () => { renderLevels(); show('menu-levels'); },
-  'lvmode-solo': () => { lvMode = 'solo'; renderLevels(); },
-  'lvmode-local': () => { if (requireMultiplayer()) { lvMode = 'local'; renderLevels(); } },
+  levels: () => openMap(),
+  'lvmode-solo': () => setLvMode('solo'),
+  'lvmode-local': () => { if (requireMultiplayer()) setLvMode('local'); },
+  'map-play': () => mapPlay(),
+  profiles: () => { renderProfiles(); show('menu-profiles'); },
+  'team-create': () => createTeamFromForm(),
+  'code-export': () => showProgressCode(),
+  'code-copy': () => copy('#code-out'),
+  'code-import': () => importProgressCode(),
   'reset-progress': () => {
     if (!window.confirm('Reset all progress, unlocks and best times?')) return;
-    save = Save.wipe();
-    renderLevels();
+    save = Save.wipe(profile);
+    openMap();
     toast('Progress reset');
   },
   online: () => { if (requireMultiplayer()) { renderWorldPick(); show('menu-online'); checkServer(); } },
@@ -336,7 +345,7 @@ function enterCheat(raw) {
   }
   c.apply(save);
   save.cheated = true;
-  Save.store(save);
+  Save.store(save, profile);
   sfx('huzzar');
   setStatus('#cheat-status', c.msg(code));
   $('#in-cheat').value = '';
@@ -360,7 +369,7 @@ function autosave() {
       time: world.time,
     };
   }
-  Save.store(save);
+  Save.store(save, profile);
 }
 
 function setPaused(on) {
@@ -398,6 +407,7 @@ function refreshMain() {
     const deaths = r.mode === 'local' ? r.deaths[0] + r.deaths[1] : r.deaths[0];
     btn.textContent = `Continue: ${stageLabel(r.level)} ${r.mode === 'local' ? '(2P) ' : ''}· ${deaths} deaths`;
   }
+  $('#btn-profile').textContent = `Profile: ${profileName()} ▸`;
   const mp = Save.multiplayerUnlocked(save);
   for (const [sel, label] of [['[data-go="new-local"]', 'Local 2 player'], ['[data-go="online"]', 'Online lobby']]) {
     const el = $(`#menu-main ${sel}`);
@@ -425,47 +435,169 @@ function refreshPause() {
   updateMuteLabel();
 }
 
-function renderLevels() {
-  const mp = Save.multiplayerUnlocked(save);
-  if (!mp) lvMode = 'solo';
-  $('#lvmode-solo').setAttribute('aria-checked', String(lvMode === 'solo'));
-  $('#lvmode-local').setAttribute('aria-checked', String(lvMode === 'local'));
-  $('#lvmode-local').textContent = mp ? 'Local 2P' : '🔒 Local 2P';
-  const grid = $('#level-grid');
-  grid.replaceChildren();
-  LEVELS.forEach((L, i) => {
-    if (L.stage === 0) {
-      const w = WORLDS[L.world];
-      const h = document.createElement('h3');
-      h.className = 'world-head';
-      const worldLocked = w.start > save.unlocked;
-      h.textContent = `World ${L.world + 1}: ${w.name}` + (w.coop ? ' · co-op' : '') +
-        (worldLocked ? ` · locked (beat World ${L.world} boss)` : '') +
-        (!worldLocked && lvMode === 'local' && w.start < MULTIPLAYER_START ? ' · solo only' : '') +
-        (!worldLocked && lvMode === 'solo' && w.coop ? ' · needs 2 players' : '');
-      grid.append(h);
+// ---------- overworld map (level select) ----------
+function openMap() {
+  if (!Save.multiplayerUnlocked(save)) lvMode = 'solo';
+  const hint = world ? world.levelIndex : save.run ? save.run.level : save.unlocked;
+  map.open(save, lvMode, hint);
+  setLvMode(lvMode);
+  show('menu-levels');
+}
+
+function setLvMode(m) {
+  lvMode = m;
+  map.mode = m;
+  map.save = save;
+  $('#lvmode-solo').setAttribute('aria-checked', String(m === 'solo'));
+  $('#lvmode-local').setAttribute('aria-checked', String(m === 'local'));
+  $('#lvmode-local').textContent = Save.multiplayerUnlocked(save) ? '2P' : '🔒 2P';
+}
+
+function mapPlay() {
+  const i = map.cursor;
+  const st = map.status(i);
+  if (st === 'ok') { newRun(lvMode, i); return; }
+  sfx('bonk');
+  toast(st === 'locked' ? 'Locked: beat the stage before it first'
+    : st === 'solo-only' ? 'World 1 is solo only: switch to Solo' : 'This world is co-op: switch to 2P', 2500);
+}
+
+function mapInput() {
+  const pressed = (...codes) => codes.some((c) => input.wasPressed(c));
+  if (pressed('ArrowLeft', 'KeyA') || input.padPressed('left')) map.move(-1) && sfx('select');
+  if (pressed('ArrowRight', 'KeyD') || input.padPressed('right')) map.move(1) && sfx('select');
+  if (pressed('ArrowUp', 'KeyW', 'KeyE', 'PageUp') || input.padPressed('up')) map.switchWorld(1) && sfx('select');
+  if (pressed('ArrowDown', 'KeyS', 'KeyQ', 'PageDown') || input.padPressed('down')) map.switchWorld(-1) && sfx('select');
+  if (pressed('Enter', 'Space') || input.padPressed('a')) mapPlay();
+  if (!world && (pressed('Escape') || input.padPressed('back'))) actions.back();
+}
+
+// Click / tap on the map: tap a stage to walk there, tap it again to play.
+canvas.addEventListener('pointerdown', (e) => {
+  if (currentPanel !== 'menu-levels') return;
+  initAudio();
+  const r = canvas.getBoundingClientRect();
+  const hit = map.hit(((e.clientX - r.left) * W) / r.width, ((e.clientY - r.top) * H) / r.height);
+  if (!hit) return;
+  if (hit.type === 'world') { if (map.switchWorld(hit.d)) sfx('select'); return; }
+  if (hit.i === map.cursor && !map.walk) mapPlay();
+  else if (hit.i <= save.unlocked) { map.walkTo(hit.i); sfx('select'); }
+  else { sfx('bonk'); toast('Locked: beat the stage before it first', 2000); }
+});
+
+// ---------- profiles / shared progress ----------
+const profileName = () => (profile === 'solo' ? 'Solo' : `Team ${profile}`);
+
+function switchProfile(id) {
+  if (world) autosave();
+  profile = Save.setActiveProfile(id);
+  save = Save.load(profile);
+  map.save = save;
+}
+
+function renderProfiles() {
+  const list = $('#profile-list');
+  list.replaceChildren();
+  const furthest = (u) => `World ${LEVELS[u].world + 1}, ${shortLabel(u)}`;
+  const entries = [{ id: 'solo', label: 'Solo', unlocked: Save.load('solo').unlocked }, ...Save.listTeams().map((t) => ({ id: t.id, label: `Team ${t.id}`, unlocked: t.unlocked }))];
+  for (const en of entries) {
+    const row = document.createElement('div');
+    row.className = 'prow';
+    const pick = document.createElement('button');
+    pick.className = 'pick';
+    pick.setAttribute('role', 'radio');
+    pick.setAttribute('aria-checked', String(en.id === profile));
+    pick.textContent = `${en.id === profile ? '● ' : ''}${en.label} · ${furthest(en.unlocked)}`;
+    pick.addEventListener('click', () => { sfx('select'); switchProfile(en.id); renderProfiles(); setStatus('#profile-status', `Now playing as ${profileName()}`); });
+    row.append(pick);
+    if (en.id !== 'solo') {
+      const del = document.createElement('button');
+      del.className = 'del danger';
+      del.textContent = '✕';
+      del.title = `Delete ${en.label}`;
+      del.addEventListener('click', () => {
+        if (!window.confirm(`Delete ${en.label} and its progress?`)) return;
+        Save.deleteTeam(en.id);
+        if (profile === en.id) switchProfile('solo');
+        renderProfiles();
+      });
+      row.append(del);
     }
-    const soloOnly = lvMode === 'local' && i < MULTIPLAYER_START;
-    const needsTwo = lvMode === 'solo' && isCoopLevel(i);
-    const locked = i > save.unlocked || soloOnly || needsTwo;
-    const b = document.createElement('button');
-    b.className = `level-card${locked ? ' locked' : ''}${isBossLevel(i) ? ' boss' : ''}`;
-    b.disabled = locked;
-    const num = document.createElement('span');
-    num.className = 'num';
-    num.textContent = soloOnly && i <= save.unlocked ? `${stageLabel(i)} · solo only`
-      : needsTwo && i <= save.unlocked ? `${stageLabel(i)} · 2 players` : locked ? `${stageLabel(i)} · locked` : stageLabel(i);
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = i > save.unlocked ? '???' : L.name;
-    const best = document.createElement('span');
-    best.className = 'best';
-    const bs = save.best[i];
-    best.textContent = locked ? '' : bs ? `Best: ${bs.deaths} deaths · ${Save.formatTime(bs.time)}` : 'Not cleared yet';
-    b.append(num, name, best);
-    b.addEventListener('click', () => { initAudio(); sfx('select'); newRun(lvMode, i); });
-    grid.append(b);
-  });
+    list.append(row);
+  }
+  $('#code-out').hidden = true;
+  $('#btn-code-copy').hidden = true;
+}
+
+function createTeamFromForm() {
+  const a = sanitizeName($('#in-team-a').value), b = sanitizeName($('#in-team-b').value);
+  if (!$('#in-team-a').value.trim() || !$('#in-team-b').value.trim()) { setStatus('#profile-status', 'Type both names first.', true); return; }
+  if (a === b) { setStatus('#profile-status', 'Use two different names.', true); return; }
+  const id = ensureTeam(a, b);
+  if (!id) { setStatus('#profile-status', 'Too many teams: delete one first.', true); return; }
+  switchProfile(id);
+  $('#in-team-a').value = ''; $('#in-team-b').value = '';
+  renderProfiles();
+  setStatus('#profile-status', `Team ${id} created. You're playing as the team now.`);
+}
+
+// A team's worlds are open as far as either player has got on their own (each device adds
+// its solo progress; online, the two are then combined), and always at least World 2,
+// since World 1 is solo-only and that's where co-op begins.
+function ensureTeam(a, b) {
+  const id = Save.createTeam(a, b);
+  if (!id) return null;
+  const s = Save.load(id);
+  const solo = Save.load('solo');
+  const want = Math.max(MULTIPLAYER_START, solo.unlocked);
+  if (s.unlocked < want) { s.unlocked = want; Save.store(s, id); }
+  return id;
+}
+
+function showProgressCode() {
+  const names = profile === 'solo' ? null : profile.split(' & ');
+  $('#code-out').value = Save.exportCode(save, names);
+  $('#code-out').hidden = false;
+  $('#btn-code-copy').hidden = false;
+  setStatus('#profile-status', 'Copy this code and load it on the other device. It contains unlocks and best times only.');
+}
+
+function importProgressCode() {
+  const got = Save.importCode($('#code-in').value);
+  if (!got) { setStatus('#profile-status', 'That progress code is not valid.', true); return; }
+  let target = 'solo';
+  if (got.names) {
+    target = ensureTeam(got.names[0], got.names[1]);
+    if (!target) { setStatus('#profile-status', 'Too many teams: delete one first.', true); return; }
+  }
+  const merged = Save.merge(Save.load(target), got.save);
+  merged.run = Save.load(target).run;
+  Save.store(merged, target);
+  switchProfile(target);
+  $('#code-in').value = '';
+  renderProfiles();
+  setStatus('#profile-status', `Progress loaded into ${profileName()} (combined with what was already here).`);
+}
+
+// Online: both players use (and keep in sync) the team profile for the two of them.
+function joinTeamWith(partner) {
+  const id = ensureTeam(myName(), partner);
+  if (!id) return;
+  if (profile !== id) switchProfile(id);
+  toast(`Playing as Team ${id}: progress is shared`, 3500);
+}
+
+function sendProgress() {
+  if (link && profile !== 'solo') link.send({ t: 'prog', ...Save.toWire(save) }, true);
+}
+
+function receiveProgress(m) {
+  if (profile === 'solo') return;
+  const run = save.run;
+  save = Save.merge(save, Save.fromWire(m));
+  save.run = run;
+  map.save = save;
+  Save.store(save, profile);
 }
 
 // Toolbar info line, refreshed a few times a second.
@@ -483,12 +615,12 @@ function updateToolbar() {
 window.addEventListener('pagehide', () => { if (world) autosave(); });
 // Another tab saved: pick up its progress (keeping our run if we're mid-game).
 window.addEventListener('storage', (e) => {
-  if (e.key !== null && e.key !== 'rage-save-v1') return;
-  const fresh = Save.load();
+  if (e.key !== null && e.key !== 'rage-save-v1' && e.key !== 'rage-teams-v1') return;
+  const fresh = Save.load(profile);
   if (world && savesRuns()) fresh.run = save.run;
   save = fresh;
   if (currentPanel === 'menu-main') refreshMain();
-  if (currentPanel === 'menu-levels') renderLevels();
+  map.save = save;
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && world) {
@@ -506,25 +638,31 @@ function onEvent(type, data) {
     Save.recordClear(save, data.level, data.deaths, data.time);
     const b = save.best[data.level];
     if (b && b.time === data.time && b.deaths === data.deaths) toast('New personal best!', 1800);
-    Save.store(save);
+    Save.store(save, profile);
+    if (mode === 'host') sendProgress();
   }
   if (type === 'level-loaded') autosave();
   if (type === 'world-clear' && data) {
     const firstUnlock = data.world === 0 && !save.best[MULTIPLAYER_START];
+    save.unlocked = Math.max(save.unlocked, data.next); // solo players skip the co-op world
     if (savesRuns()) {
       const canGoOn = !(mode === 'solo' && data.nextCoop);
       save.run = canGoOn ? { mode, level: data.next, deaths: world.players.map((p) => p.deaths).concat(0).slice(0, 2), time: world.time } : null;
       world.continueNext = canGoOn;
     }
-    Save.store(save);
-    toast(firstUnlock ? `World ${data.world + 2} unlocked! 2 player modes unlocked!`
-      : data.nextCoop ? `World ${data.world + 2} unlocked! It's co-op: grab a friend.` : `World ${data.world + 2} unlocked!`, 4000);
+    Save.store(save, profile);
+    const nw = data.nextWorld + 1;
+    toast(firstUnlock ? `World ${nw} unlocked! 2 player modes unlocked!`
+      : data.nextCoop ? `World ${nw} unlocked! It's co-op: grab a friend.`
+      : data.skipped >= 0 ? `World ${nw} unlocked! (World ${data.skipped + 1} is co-op: play it with a friend)` : `World ${nw} unlocked!`, 4500);
+    if (mode === 'host') sendProgress();
     if (mode === 'host' && link) link.send({ t: 'win' }, true);
   }
   if (type === 'victory') {
     save.wins++;
     if (savesRuns()) save.run = null;
-    Save.store(save);
+    Save.store(save, profile);
+    if (mode === 'host') sendProgress();
   }
   if (type === 'level-loaded' && mode === 'host' && link) link.send({ t: 'lvl', lv: world.levelIndex }, true);
   if (type === 'victory' && mode === 'host' && link) link.send({ t: 'win' }, true);
@@ -579,7 +717,9 @@ function onNet(m, isHost) {
     if (m.v !== PROTOCOL_VERSION) { toast('Version mismatch — both players need the same version'); cancelOnline(); return; }
     if (world) return; // already started
     partnerName = m.name;
+    joinTeamWith(partnerName);
     startGame(isHost ? 'host' : 'guest');
+    sendProgress();
     if (isHost) link.send({ t: 'lvl', lv: world.levelIndex }, true);
     toast(`Playing with ${partnerName}`);
     return;
@@ -588,6 +728,7 @@ function onNet(m, isHost) {
   if (m.t === 'bye') { link && link.close(); return; }
   if (m.t === 'ping') { link.send({ t: 'pong', n: m.n }); return; }
   if (m.t === 'pong') return;
+  if (m.t === 'prog') { receiveProgress(m); return; }
   if (isHost) {
     // The guest may only report its own player and make claims we verify.
     if (m.t === 'p') world.applyRemote(1, m);
@@ -753,7 +894,8 @@ const NEUTRAL = { left: false, right: false, jump: false, jumpPressed: false };
 
 function step() {
   input.poll();
-  if (currentPanel) menuNav();
+  if (currentPanel === 'menu-levels') mapInput();
+  else if (currentPanel) menuNav();
   if (world) {
     const online = mode === 'host' || mode === 'guest';
     if ((input.wasPressed('Escape') || input.padPressed('start')) && !world.won) {
@@ -814,7 +956,9 @@ function frame(now) {
   acc += Math.min(100, now - last);
   last = now;
   while (acc >= DT) { step(); acc -= DT; }
-  if (world) world.render(ctx); else drawTitle();
+  if (currentPanel === 'menu-levels') map.draw(ctx);
+  else if (world) world.render(ctx);
+  else drawTitle();
   requestAnimationFrame(frame);
 }
 

@@ -258,3 +258,36 @@ body.touch-on.playing .tb-label { display: none; }
 body.touch-on.playing.tb-side #toolbar { align-items: flex-start; height: auto; }
 body.touch-on.playing.tb-side #toolbar .tb-right { flex-direction: column; }
 body.touch-on.playing.tb-side #toolbar button { width: 44px; height: 44px; padding: 0; }
+
+/* Overworld map: the map is drawn on the game canvas; this bar floats at the bottom. */
+.mapbar {
+  pointer-events: auto;
+  position: fixed;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  background: rgba(26, 16, 38, 0.92);
+  border: 3px solid var(--edge);
+  box-shadow: 4px 4px 0 #000;
+  max-width: calc(100vw - 20px);
+  text-transform: uppercase;
+}
+.mapbar[hidden] { display: none; }
+.mapbar button { padding: 8px 10px; font-size: 13px; }
+.mapbar .seg { display: flex; gap: 4px; }
+@media (max-width: 480px) { .mapbar button { padding: 6px 7px; font-size: 11px; } }
+
+.profile-btn { background: transparent; border-style: dashed; font-size: 12px; padding: 6px; }
+.sub { margin: 8px 0 0; font-size: 13px; color: var(--yel); letter-spacing: 1px; }
+.plist { display: flex; flex-direction: column; gap: 6px; }
+.plist .prow { display: flex; gap: 6px; }
+.plist .prow .pick { flex: 1; text-align: left; }
+.plist .prow .pick[aria-checked="true"] { background: var(--yel); color: #000; border-color: var(--yel); }
+.plist .prow .del { flex: none; width: 44px; }
+
+.panel > * { flex-shrink: 0; }
+.panel textarea { min-height: 64px; }
