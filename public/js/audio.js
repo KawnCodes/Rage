@@ -2,14 +2,37 @@
 let ac = null;
 let muted = false;
 
+// iPhone/iPad notes:
+//  * Safari only lets sound start inside a real tap (touchend/click), so this
+//    is called on every tap, not just the first one; it's a no-op once running.
+//  * The context can drop to 'suspended' or 'interrupted' after a call, Siri,
+//    or switching apps, so every tap also tries to wake it back up.
+//  * Web audio normally obeys the ring/silent switch. Asking for the
+//    'playback' session (iOS 17+) makes the game audible like a video would be;
+//    the in-game mute button still silences it.
+let unlocked = false;
 export function initAudio() {
   try {
     if (!ac) {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (AC) ac = new AC();
+      if (!AC) return;
+      try { ac = new AC({ latencyHint: 'interactive' }); } catch { ac = new AC(); }
     }
-    if (ac && ac.state === 'suspended') ac.resume();
-  } catch { ac = null; }
+    try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch { /* unsupported */ }
+    if (ac.state !== 'running') {
+      const p = ac.resume();
+      if (p && p.catch) p.catch(() => {});
+    }
+    if (!unlocked || ac.state !== 'running') {
+      // Playing a silent sample inside the gesture is what actually unlocks iOS.
+      const b = ac.createBuffer(1, 1, 22050);
+      const src = ac.createBufferSource();
+      src.buffer = b;
+      src.connect(ac.destination);
+      src.start(0);
+      unlocked = true;
+    }
+  } catch { /* audio is optional */ }
 }
 
 export function setMuted(m) { muted = !!m; }
@@ -81,7 +104,12 @@ function tone(f0, f1, dur, type, vol, delay = 0, vibHz = 0, vibDepth = 0) {
 }
 
 export function sfx(name) {
-  if (muted || !ac || ac.state !== 'running') return;
+  if (muted || !ac) return;
+  if (ac.state !== 'running') {
+    // woke up after an interruption? try again (works once iOS allows it)
+    try { const p = ac.resume(); if (p && p.catch) p.catch(() => {}); } catch { /* ignore */ }
+    return;
+  }
   if (name === 'die') {
     // pick a funny death sound, never the same one twice in a row
     let i = Math.floor(Math.random() * DEATHS.length);

@@ -230,9 +230,12 @@ document.addEventListener('click', (e) => {
   if (b.closest('#toolbar') || b.closest('.mapbar')) b.blur();
   actions[b.dataset.go]?.(b);
 });
-// Unlock audio on first gesture of any kind.
-window.addEventListener('keydown', initAudio, { once: true });
-window.addEventListener('pointerdown', initAudio, { once: true });
+// Unlock (and re-wake) audio on every real gesture. iOS Safari only counts
+// touchend/click/keydown as a gesture, and touch controls cancel the click,
+// so listen for all of them in the capture phase.
+for (const ev of ['touchend', 'click', 'keydown', 'pointerup']) {
+  window.addEventListener(ev, initAudio, { capture: true, passive: true });
+}
 
 const actions = {
   continue: () => {
