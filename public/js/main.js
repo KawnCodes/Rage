@@ -98,6 +98,7 @@ function updateTouchUi() {
   const was = document.body.classList.contains('touch-on');
   document.body.classList.toggle('touch-on', touchActive());
   document.body.classList.toggle('playing', !!world && currentPanel === null);
+  document.body.classList.toggle('ingame', !!world); // layout stays put while paused
   if (was !== touchActive()) fit();
 }
 
@@ -374,7 +375,7 @@ function startGame(m, opts = {}) {
 
 function newRun(m, startLevel = 0) {
   let lv = Math.min(startLevel, save.unlocked);
-  if (m === 'solo' && isCoopLevel(lv)) { toast('World 3 is co-op only: play it in Local 2 player or Online', 3000); return; }
+  if (m === 'solo' && isCoopLevel(lv)) { toast('World 3 is co-op only: play it in Local 2P or Online', 3000); return; }
   if (m === 'local') {
     if (!Save.multiplayerUnlocked(save)) return;
     lv = Math.max(lv, MULTIPLAYER_START); // 2 player is World 2 onwards
@@ -398,7 +399,7 @@ function cheatHash(str, seed = 0x5241) { // cyrb53 (public domain)
 const unlockAll = (s) => { s.unlocked = LEVELS.length - 1; };
 const CHEATS = {
   '2fzw1xhxgmj': {
-    msg: () => 'Multiplayer unlocked! World 2, Local 2 player and Online are open.',
+    msg: () => 'Multiplayer unlocked! World 2, Local 2P and Online are open.',
     apply: (s) => { s.unlocked = Math.max(s.unlocked, MULTIPLAYER_START); },
   },
   '17fhowd5710': { msg: () => 'Every world and stage is unlocked!', apply: unlockAll },
@@ -480,9 +481,10 @@ function refreshMain() {
     const deaths = r.mode === 'local' ? r.deaths[0] + r.deaths[1] : r.deaths[0];
     btn.textContent = `Continue: ${stageLabel(r.level)} ${r.mode === 'local' ? '(2P) ' : ''}· ${deaths} deaths`;
   }
-  $('#btn-profile').textContent = `Profile: ${profileName()} ▸`;
+  $('#btn-profile').textContent = `👤 ${profile === 'solo' ? 'Solo' : profile} ▸`;
+  $('#btn-profile').title = `Profile: ${profileName()}`;
   const mp = Save.multiplayerUnlocked(save);
-  for (const [sel, label] of [['[data-go="new-local"]', 'Local 2 player'], ['[data-go="online"]', 'Online lobby']]) {
+  for (const [sel, label] of [['[data-go="new-local"]', 'Local 2P'], ['[data-go="online"]', 'Online lobby']]) {
     const el = $(`#menu-main ${sel}`);
     el.textContent = mp ? label : `🔒 ${label}`;
     el.classList.toggle('locked-btn', !mp);

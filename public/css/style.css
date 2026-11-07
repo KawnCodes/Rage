@@ -202,7 +202,7 @@ ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--grn); text-tra
 }
 
 /* Full-screen play on touch devices: the game fills the screen and the toolbar floats on top. */
-body.touch-on.playing #toolbar {
+body.touch-on.ingame #toolbar {
   position: fixed;
   top: max(6px, env(safe-area-inset-top));
   left: max(6px, env(safe-area-inset-left));
@@ -213,8 +213,8 @@ body.touch-on.playing #toolbar {
   z-index: 6;
   pointer-events: none;
 }
-body.touch-on.playing #toolbar button { pointer-events: auto; opacity: 0.7; padding: 6px 9px; }
-body.touch-on.playing #tb-info { visibility: hidden; }
+body.touch-on.ingame #toolbar button { pointer-events: auto; opacity: 0.7; padding: 6px 9px; }
+body.touch-on.ingame #tb-info { visibility: hidden; }
 #overlay { z-index: 7; }
 #toast { z-index: 8; }
 #rotate-hint { display: none; position: absolute; top: 52px; left: 50%; transform: translateX(-50%); margin: 0; padding: 6px 10px;
@@ -253,11 +253,11 @@ button.locked-btn { color: #7a6a8a; background: #160e20; border-color: #2a1c3a; 
 html, body { overscroll-behavior: none; }
 
 #toolbar .tb-right { display: flex; gap: 8px; }
-body.touch-on.playing .tb-label { display: none; }
+body.touch-on.ingame .tb-label { display: none; }
 /* Phones: the buttons live in the dark strips beside the game, so they never cover it. */
-body.touch-on.playing.tb-side #toolbar { align-items: flex-start; height: auto; }
-body.touch-on.playing.tb-side #toolbar .tb-right { flex-direction: column; }
-body.touch-on.playing.tb-side #toolbar button { width: 44px; height: 44px; padding: 0; }
+body.touch-on.ingame.tb-side #toolbar { align-items: flex-start; height: auto; }
+body.touch-on.ingame.tb-side #toolbar .tb-right { flex-direction: column; }
+body.touch-on.ingame.tb-side #toolbar button { width: 44px; height: 44px; padding: 0; }
 
 /* Overworld map: the map is drawn on the game canvas; this bar floats at the bottom. */
 .mapbar {
@@ -360,3 +360,134 @@ button.big { font-size: 18px; padding: 14px; }
 #server-box { display: flex; flex-direction: column; gap: 8px; }
 #server-box[hidden] { display: none; }
 #server-box .note { margin-top: -4px; }
+
+/* =====================================================================
+   Phone fit (iPhone first)
+   ===================================================================== */
+
+/* Two-column panels: stacked upright, side by side when the phone is sideways. */
+.split > .col { display: contents; }
+.split .late { order: 5; }
+.btn-grid { display: flex; flex-direction: column; gap: 10px; }
+
+/* Size panels to the screen you can actually see (not the area behind Safari's
+   bars), and keep clear of the notch / Dynamic Island / home bar. */
+#overlay {
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+.panel {
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+#toast { top: calc(max(10px, env(safe-area-inset-top)) + 2px); z-index: 9; }
+
+/* Apple's minimum comfortable tap size is 44pt. */
+button, select, input { min-height: 44px; }
+.profile-btn { min-height: 44px; }
+.swatches button { width: 44px; height: 44px; }
+.chips button { min-height: 56px; min-width: 60px; font-size: 11px; }
+#toolbar button { min-width: 44px; min-height: 44px; }
+.mapbar button { min-height: 44px; white-space: nowrap; }
+.inbox-row button { min-height: 44px; }
+button { -webkit-user-select: none; user-select: none; }
+
+/* Safari zooms the whole page into any text box under 16px: don't let it. */
+@media (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+}
+
+/* Phones: tighter spacing so menus fit without scrolling. */
+@media (max-width: 500px), (max-height: 500px) {
+  .panel { padding: 14px; gap: 8px; box-shadow: 0 0 0 3px var(--bg), 5px 5px 0 3px #000; }
+  h1 { font-size: 44px; letter-spacing: 6px; }
+  h2 { font-size: 16px; }
+  .tag { margin: -4px 0 2px; font-size: 11px; }
+  .welcome { font-size: 17px; margin: 0 0 2px; }
+  button { padding: 9px 10px; font-size: 14px; }
+  button.big { font-size: 17px; padding: 12px; }
+  .note { font-size: 12px; }
+}
+
+/* Phones held sideways: panels go wide and split into two columns. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .panel { width: min(800px, 100%); padding: 12px 14px; }
+  .panel.split { flex-direction: row; align-items: flex-start; gap: 16px; }
+  .split > .col { display: flex; flex-direction: column; gap: 8px; flex: 1 1 0; min-width: 0; }
+  .split .late { order: initial; }
+  #menu-main .col-a { align-self: center; }
+  #menu-main h1 { font-size: 40px; }
+  .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button { padding: 8px 10px; }
+  .cust-top { gap: 10px; }
+  #cust-preview { width: 66px; height: 91px; }
+}
+
+/* Phones held upright while playing: a handheld-console layout. The game sits at
+   the top under the buttons, and the big controls get the space below it. */
+@media (orientation: portrait) {
+  body.touch-on.ingame #app {
+    justify-content: flex-start;
+    padding-top: calc(max(6px, env(safe-area-inset-top)) + 54px);
+  }
+  body.touch-on.playing #rotate-hint { top: auto; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 120px); }
+  #touch[data-layout="one"] .tbtn { width: 78px; height: 78px; font-size: 28px; }
+  #touch[data-layout="one"] .tp1 .jump { width: 100px; height: 100px; font-size: 34px; }
+  #touch[data-layout="two"] .tbtn { width: 56px; height: 56px; }
+  #touch { padding-bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px)); }
+}
+
+/* Main menu: pairs of buttons side by side, so it fits on small phones. */
+#menu-main .col-b { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; order: 1; }
+#menu-main .col-b > #btn-update, #menu-main .col-b > #btn-continue, #menu-main .col-b > .row { grid-column: 1 / -1; }
+#menu-main .col-b > button, .who-row > button { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who-row .profile-btn { flex: 1.1; }
+
+/* Level-select bar: every button a full 44pt, nothing wider than the screen. */
+.mapbar { gap: 6px; padding: 6px; }
+.mapbar button { min-width: 44px; padding: 8px 10px; }
+.mapbar.side button, .mapbar.mini button { font-size: 12px; min-height: 44px; }
+@media (max-width: 400px) { .mapbar button { padding: 8px 7px; font-size: 12px; } }
+
+/* Short screens (iPhone SE upright, any phone sideways): squeeze the spacing. */
+@media (max-height: 700px) and (orientation: portrait) {
+  h1 { font-size: 34px; letter-spacing: 5px; }
+  .tag { font-size: 10px; }
+  .welcome { font-size: 15px; }
+  .panel { gap: 6px; }
+  #menu-main .col-b { gap: 6px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .panel { gap: 6px; }
+  #menu-main .col-b { gap: 6px; }
+  #menu-main .col-b > button { padding: 6px 8px; }
+  .pause-note { display: none; }
+  #menu-pause h2 { margin: 0; }
+}
+/* Narrow phones: labels fit their half-width buttons. */
+@media (max-width: 400px) {
+  #menu-main .col-b > button, .who-row > button { letter-spacing: 0; font-size: 13px; padding: 9px 4px; }
+  .tag { font-size: 11px; }
+}
+.mapbar button { letter-spacing: 0; flex: none; }
+.mapbar.side button, .mapbar.mini button { font-size: 11px; padding: 6px 2px; }
+@media (max-width: 400px) { .mapbar button { font-size: 12px; padding: 8px 6px; } }
+@media (orientation: landscape) and (max-height: 500px) {
+  #menu-main h1 { font-size: 32px; letter-spacing: 4px; }
+  #menu-main .note { font-size: 11px; }
+  #menu-main .col-b > button { letter-spacing: 0; }
+  #server-box .note { display: none; }
+  #menu-online h2, #menu-pause h2 { margin: 0; font-size: 15px; }
+}
+@media (orientation: landscape) and (max-height: 400px) { .panel { padding: 9px 14px; } }
+@media (orientation: landscape) and (max-height: 400px) {
+  #menu-main .col-b > button, .who-row > button { letter-spacing: 0; font-size: 13px; padding: 6px 4px; }
+}
+
+#menu-main .row > button { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 400px) { #menu-main .row > button { letter-spacing: 0; font-size: 13px; padding: 9px 4px; } }
+@media (orientation: landscape) and (max-height: 400px) { #menu-main .row > button { letter-spacing: 0; font-size: 13px; padding: 6px 4px; } }
+
+@media (orientation: landscape) and (max-height: 500px) { #cust-who { display: none; } }

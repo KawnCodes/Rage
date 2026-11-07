@@ -33,17 +33,28 @@
     <canvas id="screen" width="320" height="184" aria-label="Game screen"></canvas>
 
     <div id="overlay">
-      <section id="menu-main" class="panel">
+      <section id="menu-main" class="panel split">
+        <div class="col col-a">
         <h1>RAGE</h1>
         <p class="tag">a perfectly fair platformer</p>
         <p class="welcome">Welcome Asia!</p>
-        <button data-go="profiles" id="btn-profile" class="profile-btn">Profile: Solo</button>
-        <button data-go="customise" id="btn-customise">🎨 Customise character</button>
+        <div class="row who-row">
+          <button data-go="profiles" id="btn-profile" class="profile-btn">👤 Solo</button>
+          <button data-go="customise" id="btn-customise">🎨 Customise</button>
+        </div>
+        <p id="ios-fs-note" class="note center late" hidden>For full screen on iPhone: tap Share → Add to Home Screen, then open RAGE from your home screen.</p>
+        <p id="mp-note" class="note center late" hidden>🔒 2 player modes unlock in World 2. Beat The Grudge first.</p>
+        <p id="coop-note" class="note center late" hidden>World 3 is co-op only: play it in Local 2P or Online.</p>
+        <p id="stats-line" class="note center late"></p>
+        <p id="offline-line" class="note center late" hidden></p>
+        <p class="lan-line note center late" hidden></p>
+        </div>
+        <div class="col col-b">
         <button data-go="apply-update" id="btn-update" class="update-btn" hidden>🔄 Update ready: tap to restart</button>
         <button data-go="continue" id="btn-continue" class="primary" hidden>Continue</button>
         <button data-go="new-solo">New game</button>
         <button data-go="levels">Level select</button>
-        <button data-go="new-local">Local 2 player</button>
+        <button data-go="new-local">Local 2P</button>
         <button data-go="online">Online lobby</button>
         <div class="row">
           <button data-go="controls">Controls</button>
@@ -53,12 +64,7 @@
           <button data-go="mute" id="btn-mute">Sound: on</button>
           <button data-go="fullscreen" class="fs-btn">Full screen</button>
         </div>
-        <p id="ios-fs-note" class="note center" hidden>For full screen on iPhone: tap Share → Add to Home Screen, then open RAGE from your home screen.</p>
-        <p id="mp-note" class="note center" hidden>🔒 2 player modes unlock in World 2. Beat The Grudge first.</p>
-        <p id="coop-note" class="note center" hidden>World 3 is co-op only: play it in Local 2 player or Online.</p>
-        <p id="stats-line" class="note center"></p>
-        <p id="offline-line" class="note center" hidden></p>
-        <p class="lan-line note center" hidden></p>
+        </div>
       </section>
 
       <section id="menu-levels" class="mapbar" hidden>
@@ -71,7 +77,8 @@
         <button data-go="reset-progress" class="danger" title="Reset this profile's progress">Reset</button>
       </section>
 
-      <section id="menu-custom" class="panel wide" hidden>
+      <section id="menu-custom" class="panel wide split" hidden>
+        <div class="col col-a">
         <h2>Customise</h2>
         <div class="seg row" role="tablist" aria-label="Which player">
           <button data-go="cust-p1" id="cust-tab-1" role="tab">Player 1</button>
@@ -87,6 +94,9 @@
             <button data-go="cust-random">🎲 Randomise</button>
           </div>
         </div>
+        <button data-go="cust-done" class="primary late">Done</button>
+        </div>
+        <div class="col col-b">
         <div id="cust-presets">
           <h3 class="sub">Colour</h3>
           <div id="cust-colors" class="swatches"></div>
@@ -106,16 +116,23 @@
           <button data-go="paint-clear" id="btn-paint-clear" hidden>Clear</button>
           <button data-go="paint-off" id="btn-paint-off" hidden>Use presets</button>
         </div>
-        <button data-go="cust-done" class="primary">Done</button>
+        </div>
       </section>
 
-      <section id="menu-room" class="panel" hidden>
+      <section id="menu-room" class="panel split" hidden>
+        <div class="col col-a">
         <h2>Room</h2>
         <p id="room-who" class="room-who"></p>
         <p id="room-progress" class="note"></p>
         <button data-go="share-progress" id="btn-share">📤 Share my progress</button>
         <button data-go="customise">🎨 Customise character</button>
         <p class="note">Sends your own progress to your partner. They can add it to your team with one tap.</p>
+        </div>
+        <div class="col col-b">
+        <h3 class="sub">Received progress</h3>
+        <div id="room-inbox" class="plist"></div>
+        </div>
+        <div class="col col-b">
         <h3 class="sub">Received progress</h3>
         <div id="room-inbox" class="plist"></div>
         <label id="room-world-label">Start in
@@ -125,9 +142,11 @@
         <p id="room-wait" class="note"></p>
         <p id="room-status" class="status" role="status"></p>
         <button data-go="room-leave">Leave room</button>
+        </div>
       </section>
 
-      <section id="menu-profiles" class="panel" hidden>
+      <section id="menu-profiles" class="panel split" hidden>
+        <div class="col col-a">
         <h2>Profiles</h2>
         <p class="note">Your solo save is yours. A <b>team</b> profile is progress two people share: use it for local co-op, and it's picked automatically when you play online together, syncing on both devices.</p>
         <div id="profile-list" class="plist"></div>
@@ -137,6 +156,8 @@
           <input id="in-team-b" maxlength="12" autocomplete="off" spellcheck="false" placeholder="NAME 2" aria-label="Second name">
         </div>
         <button data-go="team-create">Create team</button>
+        </div>
+        <div class="col col-b">
         <h3 class="sub">Your progress code (saved on this device)</h3>
         <p class="note">Always up to date. Share it with the 📤 button in an online room, or copy it to another device.</p>
         <textarea id="code-out" readonly rows="3" aria-label="Your progress code"></textarea>
@@ -147,9 +168,11 @@
         <button data-go="code-import">Load pasted code</button>
         <p id="profile-status" class="status" role="status"></p>
         <button data-go="back">Back</button>
+        </div>
       </section>
 
-      <section id="menu-online" class="panel" hidden>
+      <section id="menu-online" class="panel split" hidden>
+        <div class="col col-a">
         <h2>Online lobby</h2>
         <label>Your name
           <input id="in-name" maxlength="12" autocomplete="off" spellcheck="false" placeholder="PLAYER">
@@ -167,15 +190,19 @@
             <button data-go="join">Join</button>
           </div>
         </div>
+        </div>
+        <div class="col col-b">
         <p class="lan-line note" hidden></p>
         <p id="no-server" class="note" hidden>Quick play and invite links need the RAGE server (<code>npm start</code> on your computer, same Wi-Fi). Without it, use Manual connect below.</p>
         <p id="room-display" class="code-big" hidden></p>
         <p id="online-status" class="status" role="status"></p>
         <button data-go="manual">Manual connect (no server)</button>
         <button data-go="back">Back</button>
+        </div>
       </section>
 
-      <section id="menu-manual" class="panel" hidden>
+      <section id="menu-manual" class="panel split" hidden>
+        <div class="col col-a">
         <h2>Manual connect</h2>
         <p class="note">Swap two codes with your friend: AirDrop, Messages, anything. Codes contain your network addresses, so only share them with people you trust.</p>
         <details class="howto">
@@ -193,6 +220,8 @@
           <button data-go="manual-host">I'm hosting</button>
           <button data-go="manual-guest">I'm joining</button>
         </div>
+        </div>
+        <div class="col col-b">
         <div id="manual-host" hidden>
           <p class="step">1. Send this code to your friend:</p>
           <textarea id="mh-offer" readonly rows="3" aria-label="Your host code"></textarea>
@@ -223,9 +252,11 @@
         </div>
         <p id="manual-status" class="status" role="status"></p>
         <button data-go="back-online">Back</button>
+        </div>
       </section>
 
-      <section id="menu-controls" class="panel" hidden>
+      <section id="menu-controls" class="panel split" hidden>
+        <div class="col col-a">
         <h2>Controls</h2>
         <table>
           <tr><th></th><th>Solo / Online</th><th>Local P1</th><th>Local P2</th></tr>
@@ -235,11 +266,14 @@
         <button data-go="touch-mode" class="touch-btn">Touch controls: auto</button>
         <p class="note">Touch controls show up automatically on phones and tablets. In local 2 player each player gets their own set: P1 on the left, P2 on the right.</p>
         <p class="note">Hold jump to jump higher. <b>R</b> restarts (counts as a death). <b>Esc</b> pauses. <b>H</b> goes home. <b>M</b> mutes. In menus, use arrow keys / D-pad and Enter / A.</p>
+        </div>
+        <div class="col col-b">
         <h2>Controllers &amp; Bluetooth</h2>
         <p class="note">Pair any Bluetooth (or USB) gamepad with your device, then press a button on it. Controller 1 → P1, controller 2 → P2. With one controller in local 2P, it plays P2 and the keyboard plays P1.</p>
         <p class="note">Browsers can't link two devices to each other directly over Bluetooth (Web Bluetooth only talks to accessories), so two-device play uses the online lobby. It also works on a local Wi-Fi / hotspot.</p>
         <ul id="pad-list"><li>No controllers detected yet.</li></ul>
         <button data-go="back">Back</button>
+        </div>
       </section>
 
       <section id="menu-cheats" class="panel" hidden>
@@ -254,6 +288,7 @@
       <section id="menu-pause" class="panel" hidden>
         <h2>Paused</h2>
         <p id="pause-info" class="note"></p>
+        <div class="btn-grid">
         <button data-go="resume">Resume</button>
         <button data-go="restart" class="offline-only">Restart stage</button>
         <button data-go="levels" class="offline-only">Level select</button>
@@ -262,7 +297,8 @@
         <button data-go="mute" class="mute-btn">Sound: on</button>
         <button data-go="touch-mode" class="touch-btn">Touch controls: auto</button>
         <button data-go="quit">Home</button>
-        <p class="note">Progress is saved automatically.</p>
+        </div>
+        <p class="note pause-note">Progress is saved automatically.</p>
       </section>
     </div>
 
